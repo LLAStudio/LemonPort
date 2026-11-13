@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "release/**"
   workflow_dispatch:
     inputs:
       version:
@@ -31,13 +33,15 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
-            case "$VERSION" in
-              v*) ;;
-              *) VERSION="v$VERSION" ;;
-            esac
+          elif [ "${GITHUB_REF_TYPE}" = "branch" ]; then
+            VERSION="${GITHUB_REF_NAME#release/}"
           else
             VERSION="${GITHUB_REF_NAME}"
           fi
+          case "$VERSION" in
+            v*) ;;
+            *) VERSION="v$VERSION" ;;
+          esac
           echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publication de $VERSION"
 

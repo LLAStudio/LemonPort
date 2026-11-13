@@ -330,7 +330,7 @@ publie les archives pour :
 Chaque archive contient le binaire, `README.md` et `LICENSE`. Un fichier `SHA256SUMS`
 est joint à la release.
 
-Deux façons de publier :
+Trois façons de publier :
 
 ```bash
 # 1. Pousser un tag
@@ -340,6 +340,11 @@ git push origin v0.1.0
 
 ```text
 # 2. GitHub → Actions → Release → Run workflow → version "0.1.0"
+```
+
+```bash
+# 3. Pousser une branche de release (pratique en CI ou sans droit de créer un tag)
+git push origin main:release/v0.1.0
 ```
 
 Le workflow crée (ou complète) la release GitHub avec les notes générées et les binaires.
