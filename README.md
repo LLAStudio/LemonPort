@@ -320,6 +320,8 @@ Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est b
 Un test TUI lance LemonPort dans un **vrai pseudo-terminal** (`portable-pty`), interprète
 l'écran avec `vt100`, filtre sur un projet puis appuie sur `Entrée` pour tuer la ligne
 sélectionnée. Il vérifie le toast de libération et que le second listener reste vivant.
+Un second test PTY vérifie qu'un listener créé après le démarrage apparaît grâce au
+rafraîchissement automatique de 2 s.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

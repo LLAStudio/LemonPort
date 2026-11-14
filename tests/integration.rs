@@ -272,6 +272,42 @@ fn tui_filter_and_kill_shortcut() {
     );
 }
 
+#[test]
+fn tui_auto_refresh_detects_new_listener() {
+    let mut tui = TuiSession::spawn();
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort"),
+            Duration::from_secs(10)
+        ),
+        "écran initial incomplet:\n{}",
+        tui.screen()
+    );
+
+    let initial = tui.screen();
+    assert!(
+        !initial.contains("tui-auto-refresh-project"),
+        "le projet ne doit pas exister avant sa création:\n{initial}"
+    );
+
+    let listener = spawn_listener("tui-auto-refresh-project");
+    let port = format!(":{}", listener.port);
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&port) && screen.contains("tui-auto-refresh-project"),
+            Duration::from_secs(10)
+        ),
+        "le listener créé après le démarrage n'a pas été détecté:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
 /// TUI lancée dans un vrai pseudo-terminal, avec écran vt100.
 struct TuiSession {
     child: Box<dyn PtyChild + Send>,
