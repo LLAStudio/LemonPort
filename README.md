@@ -334,6 +334,8 @@ externes échouent.
 Un huitième test PTY vérifie les variantes majuscules `O`, `C` et `R`.
 Un neuvième test PTY vérifie que `Ctrl+C` quitte la TUI.
 Un dixième test PTY vérifie qu'Échap annule le filtre et restaure la liste complète.
+Un onzième test PTY vérifie que l'en-tête affiche le nombre de ports système masqués et
+l'incrémente quand un nouveau port système apparaît.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

@@ -481,6 +481,72 @@ fn tui_escape_clears_filter() {
     );
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn tui_header_shows_hidden_system_port_count() {
+    let port = free_port();
+    let port_text = port.to_string();
+    let mut tui =
+        TuiSession::spawn_with_args_env(&[], &[("LEMONPORT_TEST_SYSTEM_PORT", &port_text)]);
+
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort"),
+            Duration::from_secs(10)
+        ),
+        "écran initial incomplet:\n{}",
+        tui.screen()
+    );
+
+    let baseline = hidden_system_count(&tui.screen()).unwrap_or(0);
+    let expected = baseline + 1;
+
+    // Ce listener reste dans le processus de test : le hook le classe comme
+    // système, donc il doit uniquement incrémenter le compteur masqué.
+    let _hidden =
+        std::net::TcpListener::bind(("127.0.0.1", port)).expect("bind du listener système simulé");
+
+    assert!(
+        tui.wait_for(
+            |screen| hidden_system_count(screen) == Some(expected)
+                && !screen.contains(&format!(":{port}")),
+            Duration::from_secs(10)
+        ),
+        "l'en-tête doit afficher {expected} port(s) système masqué(s):\n{}",
+        tui.screen()
+    );
+    assert!(
+        tui.screen().contains("--all pour tout voir"),
+        "l'en-tête doit inviter à utiliser --all:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[cfg(debug_assertions)]
+fn hidden_system_count(screen: &str) -> Option<usize> {
+    let marker = " système masqué";
+    let index = screen.find(marker)?;
+    screen[..index].split_whitespace().last()?.parse().ok()
+}
+
+#[cfg(debug_assertions)]
+fn free_port() -> u16 {
+    loop {
+        let listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind d'un port éphémère");
+        let port = listener.local_addr().expect("adresse locale").port();
+        if port >= 1024 {
+            return port;
+        }
+    }
+}
+
 #[test]
 fn tui_auto_refresh_removes_stopped_listener() {
     let mut listener = spawn_listener("tui-stopped-project");
@@ -732,10 +798,14 @@ struct TuiSession {
 
 impl TuiSession {
     fn spawn() -> Self {
-        Self::spawn_with_env(&[])
+        Self::spawn_with_args_env(&["--all"], &[])
     }
 
     fn spawn_with_env(extra_env: &[(&str, &str)]) -> Self {
+        Self::spawn_with_args_env(&["--all"], extra_env)
+    }
+
+    fn spawn_with_args_env(arguments: &[&str], extra_env: &[(&str, &str)]) -> Self {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -747,7 +817,9 @@ impl TuiSession {
             .expect("ouverture du pseudo-terminal");
 
         let mut command = CommandBuilder::new(BIN);
-        command.arg("--all");
+        for argument in arguments {
+            command.arg(argument);
+        }
         command.env("TERM", "xterm-256color");
         command.env("LEMONPORT_TEST_DISABLE_EXTERNAL", "1");
         for (key, value) in extra_env {
