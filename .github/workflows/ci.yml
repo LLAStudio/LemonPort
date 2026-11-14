@@ -38,19 +38,16 @@ jobs:
     name: Ports système (root)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container:
-      image: rust:1.95-bookworm
-      options: --user root
     steps:
-      - name: Récupérer le commit
-        run: |
-          git init .
-          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          git fetch --depth 1 origin "${GITHUB_REF}"
-          git checkout --detach FETCH_HEAD
+      - uses: actions/checkout@v4
 
       - name: Tester les ports système en root
-        run: cargo test --locked --test integration system -- --test-threads=1
+        run: |
+          docker run --rm --user root \
+            --volume "${GITHUB_WORKSPACE}:/workspace" \
+            --workdir /workspace \
+            rust:1.95-bookworm \
+            cargo test --locked --test integration system -- --test-threads=1
 
   coverage:
     name: Couverture
