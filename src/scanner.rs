@@ -1,9 +1,9 @@
-//! Détection des sockets TCP en écoute et enrichissement avec `sysinfo`.
+//! Listening TCP socket detection enriched with `sysinfo`.
 //!
-//! `netstat2` interroge les API natives du système (pas de parsing de
-//! `netstat`), ce qui la rend rapide et cross-platform. Les processus
-//! appartenant à un autre utilisateur restent visibles : on affiche alors
-//! `système` / `protégé` au lieu d'échouer sur une erreur de permission.
+//! `netstat2` queries native system APIs (no `netstat` parsing), which keeps
+//! it fast and cross-platform. Processes owned by another user remain
+//! visible: they are shown as `system` / `protected` instead of failing with
+//! a permission error.
 
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
@@ -16,10 +16,10 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use crate::project::{Project, ProjectResolver};
 
-/// Ports réservés au système : masqués sauf avec `--all`.
+/// Ports reserved for the system: hidden unless `--all` is used.
 const SYSTEM_PORT_LIMIT: u16 = 1024;
 
-/// Un port TCP en écoute, enrichi avec les informations du processus.
+/// A listening TCP port enriched with process information.
 #[derive(Debug, Clone, Serialize)]
 pub struct PortEntry {
     pub port: u16,
@@ -27,18 +27,18 @@ pub struct PortEntry {
     /// Adresse de bind (ex. `127.0.0.1`, `0.0.0.0`, `::`).
     pub address: String,
     pub pid: Option<u32>,
-    /// Nom du binaire, ou `système` / `protégé` si inaccessible.
+    /// Binary name, or `system` / `protected` when inaccessible.
     pub process: String,
     pub project: Option<Project>,
     pub memory_mb: f64,
     pub uptime_seconds: u64,
-    /// Port réservé au système (< 1024).
+    /// Port reserved for the system (< 1024).
     pub system: bool,
-    /// Le processus n'a pas pu être inspecté (droits insuffisants).
+    /// The process could not be inspected (insufficient permissions).
     pub protected: bool,
 }
 
-/// Résultat d'un scan, avec le nombre de ports système masqués.
+/// Result of a scan, including the number of hidden system ports.
 pub struct Scan {
     pub ports: Vec<PortEntry>,
     pub hidden_system: usize,
@@ -51,7 +51,7 @@ struct ProcessInfo {
     cwd: Option<PathBuf>,
 }
 
-/// Scanner réutilisable : conserve l'instance `sysinfo` et le cache des projets.
+/// Reusable scanner: keeps the `sysinfo` instance and the project cache.
 pub struct Scanner {
     system: System,
     resolver: ProjectResolver,
@@ -60,21 +60,21 @@ pub struct Scanner {
 impl Scanner {
     pub fn new() -> Result<Self> {
         let system =
-            System::new().map_err(|error| anyhow!("impossible d'initialiser sysinfo : {error}"))?;
+            System::new().map_err(|error| anyhow!("could not initialize sysinfo: {error}"))?;
         Ok(Self {
             system,
             resolver: ProjectResolver::default(),
         })
     }
 
-    /// Invalide les noms de projets mis en cache.
+    /// Invalidate cached project names.
     pub fn clear_project_cache(&mut self) {
         self.resolver.clear();
     }
 
-    /// Scanne tous les ports TCP en écoute.
+    /// Scan all listening TCP ports.
     ///
-    /// `include_system = false` masque les ports < 1024 ; `--all` les inclut.
+    /// `include_system = false` hides ports < 1024; `--all` includes them.
     pub fn scan(&mut self, include_system: bool) -> Result<Scan> {
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
@@ -89,9 +89,9 @@ impl Scanner {
             AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6,
             ProtocolFlags::TCP,
         )
-        .map_err(|error| anyhow!("lecture de la table des sockets TCP : {error}"))?;
+        .map_err(|error| anyhow!("reading the TCP socket table: {error}"))?;
 
-        // Clé (port, PID) : fusionne les binds IPv4/IPv6 du même processus.
+        // Key (port, PID): merge IPv4/IPv6 binds from the same process.
         let mut merged: BTreeMap<(u16, Option<u32>), PortEntry> = BTreeMap::new();
 
         for socket in sockets {
@@ -116,7 +116,7 @@ impl Scanner {
                 let key = (tcp.local_port, pid);
                 let address = tcp.local_addr.to_string();
                 if let Some(existing) = merged.get_mut(&key) {
-                    // Préfère une adresse précise à une adresse wildcard.
+                    // Prefer a specific address over a wildcard address.
                     if is_unspecified(&existing.address) && !is_unspecified(&address) {
                         existing.address = address;
                     }
@@ -130,8 +130,8 @@ impl Scanner {
                 let protected = info.is_none();
                 let process = match (info, pid) {
                     (Some(info), _) => info.name.clone(),
-                    (None, Some(_)) => "système".to_string(),
-                    (None, None) => "protégé".to_string(),
+                    (None, Some(_)) => "system".to_string(),
+                    (None, None) => "protected".to_string(),
                 };
 
                 merged.insert(

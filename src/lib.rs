@@ -1,11 +1,11 @@
-//! LemonPort — la micro-utilité qui libère vos ports TCP en un instant.
+//! LemonPort — the tiny utility that frees your TCP ports instantly.
 //!
-//! Trois modes partagent le même moteur de scan :
-//! - `lemon-port` : interface TUI interactive ;
-//! - `lemon-port <PORT>` : libération immédiate d'un port ;
-//! - `lemon-port --json` : liste machine-readable pour les scripts.
+//! Three modes share the same scan engine:
+//! - `lemon-port`: interactive TUI;
+//! - `lemon-port <PORT>`: immediately free one port;
+//! - `lemon-port --json`: machine-readable list for scripts.
 //!
-//! Le crate expose aussi le binaire `lp`, alias court installé en même temps.
+//! The crate also exposes the `lp` binary, a short alias installed with it.
 
 mod app;
 mod killer;
@@ -18,30 +18,30 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-/// Arguments de la ligne de commande.
+/// Command-line arguments.
 #[derive(Debug, Parser)]
 #[command(
     name = "lemon-port",
     version,
-    about = "🍋 LemonPort — libérez vos ports TCP en un instant",
+    about = "🍋 LemonPort — free your TCP ports instantly",
     long_about = None,
-    after_help = "Exemples :\n  lemon-port            Ouvre l'interface interactive\n  lemon-port 3000       Tue le processus qui écoute sur :3000\n  lemon-port --json     Liste les ports en JSON\n  lemon-port --all      Inclut les ports système (< 1024)"
+    after_help = "Examples:\n  lemon-port            Open the interactive UI\n  lemon-port 3000       Kill the process listening on :3000\n  lemon-port --json     List ports as JSON\n  lemon-port --all      Include system ports (< 1024)"
 )]
 pub struct Cli {
-    /// Port à libérer immédiatement (mode one-shot).
+    /// Port to free immediately (one-shot mode).
     #[arg(value_name = "PORT", value_parser = clap::value_parser!(u16).range(1..))]
     pub port: Option<u16>,
 
-    /// Affiche les ports en écoute au format JSON puis quitte.
+    /// Print listening ports as JSON and exit.
     #[arg(long)]
     pub json: bool,
 
-    /// Inclut les ports système (< 1024) et les processus protégés.
+    /// Include system ports (< 1024) and protected processes.
     #[arg(long)]
     pub all: bool,
 }
 
-/// Point d'entrée commun aux binaires `lemon-port` et `lp`.
+/// Shared entry point for the `lemon-port` and `lp` binaries.
 pub fn run(cli: Cli) -> ExitCode {
     let result = match cli.port {
         Some(port) => one_shot(port),
@@ -52,16 +52,16 @@ pub fn run(cli: Cli) -> ExitCode {
     match result {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("🍋 lemon-port : {error:#}");
+            eprintln!("🍋 lemon-port: {error:#}");
             ExitCode::FAILURE
         }
     }
 }
 
-/// Mode one-shot : libère le port demandé et rend un code de sortie scriptable.
+/// One-shot mode: free the requested port and return a script-friendly exit code.
 fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
     let mut scanner = scanner::Scanner::new()?;
-    // En mode explicite, on ne filtre rien : l'utilisateur sait ce qu'il fait.
+    // In explicit mode nothing is filtered: the user knows what they are doing.
     let scan = scanner.scan(true)?;
     let listeners: Vec<&scanner::PortEntry> = scan
         .ports
@@ -70,7 +70,7 @@ fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
         .collect();
 
     if listeners.is_empty() {
-        println!("🍋 Aucun processus n'écoute sur le port :{port}");
+        println!("🍋 No process is listening on port :{port}");
         return Ok(ExitCode::FAILURE);
     }
 
@@ -79,7 +79,7 @@ fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
     pids.dedup();
 
     if pids.is_empty() {
-        eprintln!("✗ :{port} est détenu par un processus système protégé (PID introuvable)");
+        eprintln!("✗ :{port} is held by a protected system process (PID not found)");
         return Ok(ExitCode::FAILURE);
     }
 
@@ -88,7 +88,7 @@ fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
         let entry = listeners.iter().find(|entry| entry.pid == Some(pid));
         let process = entry
             .map(|entry| entry.process.clone())
-            .unwrap_or_else(|| "processus".to_string());
+            .unwrap_or_else(|| "process".to_string());
         let project = entry
             .and_then(|entry| entry.project.as_ref())
             .map(|project| format!(" · {} ({})", project.name, project.label()));
@@ -97,16 +97,16 @@ fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
             killer::KillOutcome::Terminated { escalated } => {
                 let method = if escalated { " (SIGKILL)" } else { "" };
                 println!(
-                    "🍋 :{port} libéré — {process} (PID {pid}){}{method}",
+                    "🍋 :{port} freed — {process} (PID {pid}){}{method}",
                     project.as_deref().unwrap_or("")
                 );
             }
             killer::KillOutcome::AlreadyGone => {
-                eprintln!("✗ :{port} — {process} (PID {pid}) s'est arrêté avant la terminaison");
+                eprintln!("✗ :{port} — {process} (PID {pid}) stopped before termination");
                 failed = true;
             }
             killer::KillOutcome::Failed(message) => {
-                eprintln!("✗ :{port} — {process} (PID {pid}) : {message}");
+                eprintln!("✗ :{port} — {process} (PID {pid}): {message}");
                 failed = true;
             }
         }
@@ -119,7 +119,7 @@ fn one_shot(port: u16) -> anyhow::Result<ExitCode> {
     })
 }
 
-/// Mode JSON : tableau d'objets, une entrée par couple port/processus.
+/// JSON mode: array of objects, one entry per port/process pair.
 fn print_json(all: bool) -> anyhow::Result<ExitCode> {
     let mut scanner = scanner::Scanner::new()?;
     let scan = scanner.scan(all)?;
@@ -127,12 +127,10 @@ fn print_json(all: bool) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Mode interactif : refuse proprement d'écrire une TUI dans un pipe.
+/// Interactive mode: refuse to draw a TUI into a pipe.
 fn interactive(all: bool) -> anyhow::Result<ExitCode> {
     if !std::io::stdout().is_terminal() {
-        anyhow::bail!(
-            "le mode interactif nécessite un terminal — utilisez `lemon-port --json` dans un script"
-        );
+        anyhow::bail!("interactive mode requires a terminal — use `lemon-port --json` in a script");
     }
 
     let mut app = app::App::new(all)?;

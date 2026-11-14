@@ -1,8 +1,8 @@
-//! Résolution du répertoire de travail et détection intelligente du projet.
+//! Working-directory resolution and smart project detection.
 //!
-//! À partir du `cwd` d'un processus, on remonte jusqu'à trois dossiers parents
-//! pour trouver un manifeste connu. Le nom extrait remplace le simple nom du
-//! binaire dans l'interface (`PipeCraft (Next.js)` au lieu de `node`).
+//! Starting from a process's `cwd`, walk up to three parent directories to
+//! find a known manifest. The extracted name replaces the plain binary name
+//! in the UI (`PipeCraft (Next.js)` instead of `node`).
 
 use std::collections::HashMap;
 use std::fs;
@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-/// Un manifeste plus gros que cela n'est pas un manifeste de projet normal.
+/// A manifest larger than this is not a normal project manifest.
 const MAX_MANIFEST_BYTES: u64 = 512 * 1024;
-/// Dossiers parents explorés en plus du `cwd` lui-même.
+/// Parent directories explored in addition to the `cwd` itself.
 const MAX_PARENT_DEPTH: usize = 3;
 const MANIFESTS: [&str; 5] = [
     "package.json",
@@ -22,21 +22,21 @@ const MANIFESTS: [&str; 5] = [
     "composer.json",
 ];
 
-/// Projet associé à un processus en écoute.
+/// Project associated with a listening process.
 #[derive(Debug, Clone, Serialize)]
 pub struct Project {
     pub name: String,
-    /// Langage / écosystème détecté.
+    /// Detected language / ecosystem.
     pub kind: String,
-    /// Framework applicatif détecté dans les dépendances.
+    /// Application framework detected in the dependencies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub framework: Option<String>,
-    /// Dossier contenant le manifeste.
+    /// Directory containing the manifest.
     pub root: String,
 }
 
 impl Project {
-    /// Libellé affiché entre parenthèses : framework si connu, sinon langage.
+    /// Label shown in parentheses: framework when known, otherwise language.
     pub fn label(&self) -> &str {
         match &self.framework {
             Some(framework) => framework,
@@ -45,8 +45,8 @@ impl Project {
     }
 }
 
-/// Résolveur avec cache `cwd -> projet` pour éviter de relire les manifestes
-/// à chaque rafraîchissement (toutes les 2 secondes).
+/// Resolver with a `cwd -> project` cache to avoid re-reading manifests on
+/// every refresh (every 2 seconds).
 #[derive(Default)]
 pub struct ProjectResolver {
     cache: HashMap<PathBuf, Option<Project>>,
@@ -62,7 +62,7 @@ impl ProjectResolver {
         found
     }
 
-    /// Invalide le cache après un rafraîchissement manuel (`R`).
+    /// Invalidate the cache after a manual refresh (`R`).
     pub fn clear(&mut self) {
         self.cache.clear();
     }
@@ -115,7 +115,7 @@ fn read_manifest(path: &Path) -> Option<String> {
 fn fallback_name(dir: &Path) -> String {
     dir.file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "projet".to_string())
+        .unwrap_or_else(|| "project".to_string())
 }
 
 fn clean_name(value: Option<&str>, dir: &Path) -> String {
@@ -135,7 +135,7 @@ fn build_project(dir: &Path, name: String, kind: &str, framework: Option<&str>) 
     }
 }
 
-/// Retourne le premier framework dont la dépendance est présente.
+/// Return the first framework whose dependency is present.
 fn find_framework<'a>(dependencies: &[&str], candidates: &[(&str, &'a str)]) -> Option<&'a str> {
     candidates
         .iter()
@@ -145,7 +145,7 @@ fn find_framework<'a>(dependencies: &[&str], candidates: &[(&str, &'a str)]) -> 
 
 fn from_package_json(dir: &Path, text: &str) -> Option<Project> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    // Un package.json valide est toujours un objet JSON.
+    // A valid package.json is always a JSON object.
     let value = value.as_object()?;
     let name = clean_name(value.get("name").and_then(serde_json::Value::as_str), dir);
 
@@ -266,7 +266,7 @@ fn from_go_mod(dir: &Path, text: &str) -> Option<Project> {
         }
     })?;
 
-    // Un go.mod sans directive `module` n'est pas un manifeste valide.
+    // A go.mod without a `module` directive is not a valid manifest.
     let name = clean_name(module.rsplit('/').next(), dir);
 
     const CANDIDATES: [(&str, &str); 6] = [
@@ -319,7 +319,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    /// Dossier temporaire isolé, supprimé même si une assertion échoue.
+    /// Isolated temporary directory, removed even when an assertion fails.
     struct TempProject {
         root: PathBuf,
     }
@@ -333,7 +333,7 @@ mod tests {
                 std::process::id()
             ));
             let _ = fs::remove_dir_all(&root);
-            fs::create_dir_all(&root).expect("création du dossier de test");
+            fs::create_dir_all(&root).expect("create the test directory");
             Self { root }
         }
 
@@ -342,7 +342,7 @@ mod tests {
         }
 
         fn write(&self, manifest: &str, contents: &str) {
-            fs::write(self.root.join(manifest), contents).expect("écriture du manifeste");
+            fs::write(self.root.join(manifest), contents).expect("write the manifest");
         }
     }
 
@@ -376,7 +376,7 @@ mod tests {
 }"#,
         );
 
-        let detected = detect_in_dir(project.path()).expect("package.json valide détecté");
+        let detected = detect_in_dir(project.path()).expect("valid package.json detected");
         assert_project(
             &detected,
             project.path(),
@@ -399,7 +399,7 @@ axum = "0.8"
 "#,
         );
 
-        let detected = detect_in_dir(project.path()).expect("Cargo.toml valide détecté");
+        let detected = detect_in_dir(project.path()).expect("valid Cargo.toml detected");
         assert_project(&detected, project.path(), "rust-api", "Rust", Some("Axum"));
     }
 
@@ -414,7 +414,7 @@ dependencies = ["fastapi>=0.115", "uvicorn>=0.32"]
 "#,
         );
 
-        let detected = detect_in_dir(project.path()).expect("pyproject.toml valide détecté");
+        let detected = detect_in_dir(project.path()).expect("valid pyproject.toml detected");
         assert_project(
             &detected,
             project.path(),
@@ -437,7 +437,7 @@ require github.com/gin-gonic/gin v1.10.0
 "#,
         );
 
-        let detected = detect_in_dir(project.path()).expect("go.mod valide détecté");
+        let detected = detect_in_dir(project.path()).expect("valid go.mod detected");
         assert_project(&detected, project.path(), "port-service", "Go", Some("Gin"));
     }
 
@@ -452,7 +452,7 @@ require github.com/gin-gonic/gin v1.10.0
 }"#,
         );
 
-        let detected = detect_in_dir(project.path()).expect("composer.json valide détecté");
+        let detected = detect_in_dir(project.path()).expect("valid composer.json detected");
         assert_project(
             &detected,
             project.path(),
@@ -476,7 +476,7 @@ require github.com/gin-gonic/gin v1.10.0
             project.write(manifest, contents);
             assert!(
                 detect_in_dir(project.path()).is_none(),
-                "{manifest} malformé ne doit pas être retenu"
+                "malformed {manifest} must not be used"
             );
         }
     }
@@ -488,7 +488,7 @@ require github.com/gin-gonic/gin v1.10.0
             project.write(manifest, "[]");
             assert!(
                 detect_in_dir(project.path()).is_none(),
-                "{manifest} doit être un objet JSON"
+                "{manifest} must be a JSON object"
             );
         }
     }
@@ -502,7 +502,7 @@ require github.com/gin-gonic/gin v1.10.0
         );
         assert!(
             detect_in_dir(project.path()).is_none(),
-            "un go.mod sans directive module est invalide"
+            "a go.mod without a module directive is invalid"
         );
     }
 
@@ -512,7 +512,7 @@ require github.com/gin-gonic/gin v1.10.0
         project.write("package.json", "{ broken");
         project.write("Cargo.toml", "[package]\nname = \"fallback-app\"\n");
 
-        let detected = detect_in_dir(project.path()).expect("Cargo.toml doit prendre le relais");
+        let detected = detect_in_dir(project.path()).expect("Cargo.toml must be used instead");
         assert_project(&detected, project.path(), "fallback-app", "Rust", None);
     }
 
@@ -525,9 +525,9 @@ require github.com/gin-gonic/gin v1.10.0
             .join("src")
             .join("features")
             .join("components");
-        fs::create_dir_all(&cwd).expect("création des dossiers imbriqués");
+        fs::create_dir_all(&cwd).expect("create nested directories");
 
-        let detected = detect(&cwd).expect("manifeste du parent détecté");
+        let detected = detect(&cwd).expect("parent manifest detected");
         assert_eq!(detected.name.as_str(), "nested-app");
         assert_eq!(Path::new(&detected.root), project.path());
     }

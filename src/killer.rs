@@ -1,8 +1,8 @@
-//! Terminaison propre et cross-platform des processus.
+//! Clean, cross-platform process termination.
 //!
-//! Sur Unix : `SIGTERM`, attente de 1,5 s, puis `SIGKILL` si le processus
-//! résiste. Sur Windows, `TerminateProcess` est utilisé directement car il
-//! n'existe pas de `SIGTERM` pour les applications console.
+//! On Unix: `SIGTERM`, a 1.5 s wait, then `SIGKILL` if the process resists.
+//! On Windows, `TerminateProcess` is used directly because console
+//! applications have no `SIGTERM`.
 
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
@@ -12,19 +12,19 @@ use std::time::{Duration, Instant};
 use sysinfo::Signal;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
 
-/// Délai laissé au processus pour s'arrêter proprement avant `SIGKILL`.
+/// Time given to the process to stop cleanly before `SIGKILL`.
 #[cfg(unix)]
 const GRACE_PERIOD: Duration = Duration::from_millis(1500);
-/// Délai d'attente après la terminaison forcée.
+/// Wait after forced termination.
 const FORCE_WAIT: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub enum KillOutcome {
-    /// Le processus s'est arrêté (`escalated` : SIGKILL a été nécessaire).
+    /// The process stopped (`escalated`: SIGKILL was required).
     Terminated {
         escalated: bool,
     },
-    /// Le PID n'existait déjà plus entre le scan et la terminaison.
+    /// The PID no longer existed between the scan and termination.
     AlreadyGone,
     Failed(String),
 }
@@ -37,7 +37,7 @@ pub struct KillReport {
     pub outcome: KillOutcome,
 }
 
-/// Termine le processus `pid` de manière synchrone.
+/// Terminate the `pid` process synchronously.
 pub fn terminate(pid: u32, port: u16, process: &str) -> KillReport {
     KillReport {
         pid,
@@ -47,8 +47,8 @@ pub fn terminate(pid: u32, port: u16, process: &str) -> KillReport {
     }
 }
 
-/// Lance la terminaison dans un thread pour ne pas figer la TUI pendant
-/// l'attente de 1,5 s. Le résultat arrive sur le canal retourné.
+/// Run termination in a thread so the TUI never freezes during the 1.5 s
+/// wait. The result arrives on the returned channel.
 pub fn spawn_terminate(
     pid: u32,
     port: u16,
@@ -68,7 +68,7 @@ fn terminate_inner(raw_pid: u32) -> KillOutcome {
     let pid = Pid::from_u32(raw_pid);
     let mut system = match System::new() {
         Ok(system) => system,
-        Err(error) => return KillOutcome::Failed(format!("sysinfo indisponible : {error}")),
+        Err(error) => return KillOutcome::Failed(format!("sysinfo unavailable: {error}")),
     };
 
     refresh(&mut system, pid);
@@ -86,12 +86,10 @@ fn terminate_inner(raw_pid: u32) -> KillOutcome {
         match signal_sent {
             Some(true) => {}
             Some(false) => {
-                return KillOutcome::Failed("permission refusée — relancez avec sudo".to_string())
+                return KillOutcome::Failed("permission denied — rerun with sudo".to_string())
             }
             None => {
-                return KillOutcome::Failed(
-                    "SIGTERM n'est pas disponible sur cette plateforme".to_string(),
-                )
+                return KillOutcome::Failed("SIGTERM is not available on this platform".to_string())
             }
         }
 
@@ -109,21 +107,19 @@ fn force_kill(system: &mut System, pid: Pid) -> KillOutcome {
         .map(|process| process.kill())
         .unwrap_or(false);
 
-    // Le processus a pu disparaître entre l'attente et l'appel : ce n'est pas
-    // une erreur, le port est bien libéré.
+    // The process may have disappeared between the wait and this call: that
+    // is not an error, the port is free.
     if !killed {
         if wait_for_exit(system, pid, Duration::from_millis(200)) {
             return KillOutcome::Terminated { escalated: true };
         }
-        return KillOutcome::Failed(
-            "impossible de tuer le processus (permission refusée ?)".to_string(),
-        );
+        return KillOutcome::Failed("could not kill the process (permission denied?)".to_string());
     }
 
     if wait_for_exit(system, pid, FORCE_WAIT) {
         KillOutcome::Terminated { escalated: true }
     } else {
-        KillOutcome::Failed("le processus résiste à la terminaison forcée".to_string())
+        KillOutcome::Failed("the process resists forced termination".to_string())
     }
 }
 
@@ -135,7 +131,7 @@ fn refresh(system: &mut System, pid: Pid) {
     );
 }
 
-/// Attend la disparition (ou l'état zombie) du PID, avec un timeout borné.
+/// Wait for the PID to disappear (or become a zombie), with a bounded timeout.
 fn wait_for_exit(system: &mut System, pid: Pid, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     loop {

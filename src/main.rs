@@ -1,7 +1,7 @@
-//! Binaire principal `lemon-port`.
+//! Main `lemon-port` binary.
 //!
-//! Le parsing clap et le dispatch vers les trois modes vivent dans la
-//! bibliothèque, partagée avec l'alias `lp`.
+//! Clap parsing and dispatch to the three modes live in the library, shared
+//! with the `lp` alias.
 
 use clap::Parser;
 use lemon_port::{run, Cli};

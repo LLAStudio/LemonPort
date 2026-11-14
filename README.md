@@ -1,78 +1,77 @@
 # 🍋 LemonPort
 
 [![Release](https://img.shields.io/github/v/release/LLAStudio/LemonPort?color=FACC15&label=release)](https://github.com/LLAStudio/LemonPort/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-84CC16.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-84CC16.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.95%2B-FACC15.svg)](https://www.rust-lang.org)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-84CC16.svg)](#compatibilité--limites)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-84CC16.svg)](#compatibility--limits)
 
-> **Le `kill -9` de vos ports, en version citron.**
-> Une micro-utilité LLAStudio : zéro configuration, démarrage instantané, interface terminal nette.
+> **The `kill -9` for your ports, lemon-style.**
+> A tiny LLAStudio utility: zero configuration, instant startup, clean terminal UI.
 
-LemonPort liste les ports TCP en écoute, retrouve **le vrai nom du projet** derrière chaque
-processus (`PipeCraft (Next.js)` plutôt que `node`), et libère un port en une touche.
-Trois modes : TUI interactive, one-shot scriptable, JSON.
+LemonPort lists listening TCP ports, finds the **real project name** behind each process
+(`PipeCraft (Next.js)` instead of `node`), and frees a port with one key. Three modes:
+interactive TUI, scriptable one-shot, and JSON.
 
 ```text
-🍋 LemonPort  by LLAStudio                                        3 ports actifs
+🍋 LemonPort  by LLAStudio                                        3 active ports
 
-TCP · LISTEN · scan auto 2 s                                    / filtrer
+TCP · LISTEN · auto-scan 2 s                                    / filter
 ────────────────────────────────────────────────────────────────────────────
-╭─ PORTS EN ÉCOUTE 3 ──────────────────────────────────────────────────────╮
-│ PORT      PROJET / PROCESSUS                PID     RAM      STATUT      │
-│ ▸ :3000   PipeCraft (Next.js) · node       18234    92 Mo    ACTIF 2h14  │
-│   :5432   api (FastAPI) · python3           9123   118 Mo    ACTIF 6h02  │
-│   :8080   blog (Rust) · cargo-watch         4410    24 Mo    ACTIF 12m   │
+╭─ LISTENING PORTS 3 ──────────────────────────────────────────────────────╮
+│ PORT      PROJECT / PROCESS                 PID     RAM      STATUS      │
+│ ▸ :3000   PipeCraft (Next.js) · node       18234    92 MB    ACTIVE 2h14  │
+│   :5432   api (FastAPI) · python3           9123   118 MB    ACTIVE 6h02  │
+│   :8080   blog (Rust) · cargo-watch         4410    24 MB    ACTIVE 12m   │
 ╰──────────────────────────────────────────────────────────────────────────╯
 
- ● Arrêt en cours — node (:3000, PID 18234)…
- ↑↓ naviguer  Entrée/K tuer  / filtrer  O ouvrir  C copier  R rafraîchir  Q quitter
+ ● Stopping — node (:3000, PID 18234)…
+ ↑↓ navigate  Enter/K kill  / filter  O open  C copy  R refresh  Q quit
 ```
 
 ---
 
-## Sommaire
+## Table of contents
 
-- [Fonctionnalités](#fonctionnalités)
+- [Features](#features)
 - [Installation](#installation)
   - [Script — Linux & macOS](#script--linux--macos)
   - [Script — Windows](#script--windows)
-  - [Depuis les sources](#depuis-les-sources)
-  - [Depuis le dépôt, sans clone](#depuis-le-dépôt-sans-clone)
-  - [Alias `lp`](#alias-lp)
-- [Utilisation](#utilisation)
-- [Raccourcis TUI](#raccourcis-tui)
-- [Détection des projets](#détection-des-projets)
-- [Sortie JSON](#sortie-json)
-- [Construire les binaires de release](#construire-les-binaires-de-release)
+  - [From source](#from-source)
+  - [From the repository, without cloning](#from-the-repository-without-cloning)
+  - [`lp` alias](#lp-alias)
+- [Usage](#usage)
+- [TUI shortcuts](#tui-shortcuts)
+- [Project detection](#project-detection)
+- [JSON output](#json-output)
+- [Building release binaries](#building-release-binaries)
 - [Architecture](#architecture)
-- [Compatibilité & limites](#compatibilité--limites)
-- [Licence](#licence)
+- [Compatibility & limits](#compatibility--limits)
+- [License](#license)
 
 ---
 
-## Fonctionnalités
+## Features
 
-- **TUI instantanée** (`ratatui` + `crossterm`) : ports TCP en `LISTEN`, triés avec les ports
-  de développement en premier.
-- **One-shot** : `lemon-port 3000` tue le processus, affiche une ligne de confirmation et
-  sort avec un code exploitable dans un script.
-- **JSON** : `lemon-port --json` pour les dashboards, Makefiles, CI et outils maison.
-- **Vrai nom de projet** : résolution du `cwd` du processus et remontée de 3 niveaux de
-  dossiers pour trouver `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod` ou
-  `composer.json`. Framework détecté dans les dépendances.
-- **Enrichissement** : PID, binaire, RAM résidente, uptime, adresse de bind.
-- **Terminaison propre** : `SIGTERM`, attente de 1,5 s, puis `SIGKILL` si nécessaire
-  (`TerminateProcess` sur Windows). La TUI reste fluide pendant l'attente.
-- **Zéro configuration**, zéro fichier de config, zéro compte. Un binaire autonome.
-- **Cross-platform** : Linux (x86_64/aarch64), macOS (Intel/Apple Silicon), Windows (x64).
-- **Open-source**, licence MIT, aucune télémétrie.
+- **Instant TUI** (`ratatui` + `crossterm`): listening TCP ports, with development ports
+  sorted first.
+- **One-shot**: `lemon-port 3000` kills the process, prints one confirmation line, and
+  returns a script-friendly exit code.
+- **JSON**: `lemon-port --json` for dashboards, Makefiles, CI, and custom tools.
+- **Real project names**: resolve the process `cwd` and walk up to 3 parent directories
+  to find `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, or `composer.json`.
+  Frameworks are detected in the dependencies.
+- **Enrichment**: PID, binary, resident RAM, uptime, bind address.
+- **Clean termination**: `SIGTERM`, a 1.5 s wait, then `SIGKILL` if needed
+  (`TerminateProcess` on Windows). The TUI stays responsive while waiting.
+- **Zero configuration**, zero config files, zero accounts. One standalone binary.
+- **Cross-platform**: Linux (x86_64/aarch64), macOS (Intel/Apple Silicon), Windows (x64).
+- **Open source**, MIT license, no telemetry.
 
 ## Installation
 
-> Les commandes par script téléchargent un binaire depuis
-> [les releases GitHub](https://github.com/LLAStudio/LemonPort/releases).
-> Si aucune release n'est encore publiée, utilisez l'installation depuis les sources
-> (`--source` ou `cargo install --git`).
+> Script commands download a binary from
+> [GitHub releases](https://github.com/LLAStudio/LemonPort/releases).
+> If no release is published yet, install from source (`--source` or `cargo install --git`).
 
 ### Script — Linux & macOS
 
@@ -80,53 +79,53 @@ TCP · LISTEN · scan auto 2 s                                    / filtrer
 curl -fsSL https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.sh | sh
 ```
 
-Le script détecte l'OS et l'architecture, vérifie le SHA-256, installe `lemon-port` et
-l'alias `lp` dans `~/.local/bin`, puis affiche la ligne à ajouter au `PATH` si nécessaire.
+The script detects the OS and architecture, verifies the SHA-256, installs `lemon-port` and
+the `lp` alias in `~/.local/bin`, then prints the line to add to `PATH` if needed.
 
-Options (à passer après `sh -s --`) :
+Options (pass them after `sh -s --`):
 
 ```bash
-# Depuis les sources (nécessite Rust)
+# From source (requires Rust)
 curl -fsSL https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.sh | sh -s -- --source
 
-# Version ou dossier précis
+# Specific version or directory
 curl -fsSL https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.sh | sh -s -- --version 0.1.0 --dir "$HOME/bin"
 ```
 
-| Option | Rôle |
+| Option | Purpose |
 | --- | --- |
-| `--source` | Compile et installe depuis le dépôt avec Cargo |
-| `--version <v>` | Installe une version précise (ex. `0.1.0` ou `v0.1.0`) |
-| `--dir <chemin>` | Dossier d'installation (défaut : `~/.local/bin`) |
-| `--help` | Affiche l'aide |
+| `--source` | Build and install from the repository with Cargo |
+| `--version <v>` | Install a specific version (e.g. `0.1.0` or `v0.1.0`) |
+| `--dir <path>` | Installation directory (default: `~/.local/bin`) |
+| `--help` | Show help |
 
-Variables équivalentes : `LEMONPORT_VERSION`, `LEMONPORT_INSTALL_DIR`, `LEMONPORT_REPO`.
+Equivalent variables: `LEMONPORT_VERSION`, `LEMONPORT_INSTALL_DIR`, `LEMONPORT_REPO`.
 
 ### Script — Windows
 
-Dans PowerShell :
+In PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.ps1 | iex
 ```
 
-Le script installe `lemon-port.exe` et `lp.exe` dans
-`%LOCALAPPDATA%\LemonPort\bin`, vérifie le SHA-256 et ajoute ce dossier au `PATH`
-utilisateur (nouveau terminal nécessaire).
+The script installs `lemon-port.exe` and `lp.exe` in
+`%LOCALAPPDATA%\LemonPort\bin`, verifies the SHA-256, and adds that directory to the user
+`PATH` (a new terminal is required).
 
 ```powershell
-# Depuis les sources
+# From source
 $env:LEMONPORT_FROM_SOURCE = "1"; irm https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.ps1 | iex
 
-# Version ou dossier précis via variables d'environnement
+# Specific version or directory via environment variables
 $env:LEMONPORT_VERSION = "0.1.0"
 $env:LEMONPORT_INSTALL_DIR = "$HOME\bin"
 irm https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.ps1 | iex
 ```
 
-### Depuis les sources
+### From source
 
-Prérequis commun : **Rust 1.95+** via [rustup](https://rustup.rs).
+Common prerequisite: **Rust 1.95+** via [rustup](https://rustup.rs).
 
 <table>
 <tr><th>Linux</th><th>macOS</th><th>Windows</th></tr>
@@ -151,8 +150,8 @@ xcode-select --install
 
 </td><td>
 
-Installez **Visual Studio Build Tools** avec la charge
-« Développement Desktop en C++ », puis :
+Install **Visual Studio Build Tools** with the
+“Desktop development with C++” workload, then:
 
 ```powershell
 rustup default stable-msvc
@@ -161,7 +160,7 @@ rustup default stable-msvc
 </td></tr>
 </table>
 
-Ensuite, sur les trois OS :
+Then, on all three platforms:
 
 ```bash
 git clone https://github.com/LLAStudio/LemonPort.git
@@ -169,22 +168,22 @@ cd LemonPort
 cargo install --path .
 ```
 
-`cargo install` installe **les deux binaires** : `lemon-port` et `lp`.
-Le binaire arrive dans `~/.cargo/bin` (Linux/macOS) ou `%USERPROFILE%\.cargo\bin`
-(Windows), déjà dans le `PATH` si rustup a été utilisé.
+`cargo install` installs **both binaries**: `lemon-port` and `lp`.
+The binary lands in `~/.cargo/bin` (Linux/macOS) or `%USERPROFILE%\.cargo\bin`
+(Windows), already on `PATH` when rustup is used.
 
-### Depuis le dépôt, sans clone
+### From the repository, without cloning
 
 ```bash
 cargo install --git https://github.com/LLAStudio/LemonPort --locked
 ```
 
-Même résultat que l'installation locale, sans cloner le dépôt.
+Same result as a local installation, without cloning the repository.
 
-### Alias `lp`
+### `lp` alias
 
-L'alias est fourni automatiquement par `cargo install` et par les scripts d'installation.
-Si vous copiez le binaire à la main :
+The alias is provided automatically by `cargo install` and by the install scripts.
+If you copy the binary manually:
 
 ```bash
 # Linux / macOS
@@ -196,16 +195,16 @@ ln -s lemon-port /usr/local/bin/lp
 Copy-Item "$env:LOCALAPPDATA\LemonPort\bin\lemon-port.exe" "$env:LOCALAPPDATA\LemonPort\bin\lp.exe"
 ```
 
-## Utilisation
+## Usage
 
-### TUI interactive (par défaut)
+### Interactive TUI (default)
 
 ```bash
 lemon-port
 ```
 
-Liste les ports TCP en écoute, avec auto-refresh toutes les 2 secondes.
-Les ports système (< 1024) sont masqués par défaut ; `--all` les affiche.
+Lists listening TCP ports with an auto-refresh every 2 seconds.
+System ports (< 1024) are hidden by default; `--all` shows them.
 
 ```bash
 lemon-port --all
@@ -215,14 +214,14 @@ lemon-port --all
 
 ```bash
 lemon-port 3000
-# 🍋 :3000 libéré — node (PID 18234) · PipeCraft (Next.js)
+# 🍋 :3000 freed — node (PID 18234) · PipeCraft (Next.js)
 ```
 
-- Code de sortie `0` : port libéré (SIGTERM ou SIGKILL).
-- Code de sortie `1` : aucun processus, PID protégé, permission refusée ou processus résistant.
-- Code de sortie `2` : arguments invalides (clap).
+- Exit code `0`: port freed (SIGTERM or SIGKILL).
+- Exit code `1`: no process, protected PID, permission denied, or process resisting.
+- Exit code `2`: invalid arguments (clap).
 
-La terminaison est propre : `SIGTERM`, puis `SIGKILL` après 1,5 s si le processus résiste.
+Termination is clean: `SIGTERM`, then `SIGKILL` after 1.5 s if the process resists.
 
 ### JSON
 
@@ -231,51 +230,51 @@ lemon-port --json
 lemon-port --json --all
 ```
 
-### Aide
+### Help
 
 ```bash
 lemon-port --help
 lemon-port --version
 ```
 
-## Raccourcis TUI
+## TUI shortcuts
 
-| Touche | Action |
+| Key | Action |
 | --- | --- |
-| `↑` / `↓`, `k` / `j` | Naviguer dans la liste |
-| `Entrée` ou `K` | Tuer le processus sélectionné (`SIGTERM` → `SIGKILL` après 1,5 s) |
-| `O` | Ouvrir `http://localhost:<PORT>` dans le navigateur par défaut |
-| `C` | Copier l'URL `http://localhost:<PORT>` dans le presse-papier |
-| `R` | Rafraîchir immédiatement (en plus de l'auto-refresh 2 s) |
-| `/` | Activer le filtre en temps réel (nom, projet, port, PID) |
-| Texte direct | Lance le filtre avec le premier caractère tapé |
-| `Échap` | Efface le filtre ; hors filtre, quitte |
-| `Q` | Quitter proprement (terminal restauré) |
-| `Ctrl+C` | Quitter proprement |
+| `↑` / `↓`, `k` / `j` | Navigate the list |
+| `Enter` or `K` | Kill the selected process (`SIGTERM` → `SIGKILL` after 1.5 s) |
+| `O` | Open `http://localhost:<PORT>` in the default browser |
+| `C` | Copy `http://localhost:<PORT>` to the clipboard |
+| `R` | Refresh immediately (in addition to the 2 s auto-refresh) |
+| `/` | Enable the live filter (name, project, port, PID) |
+| Direct typing | Start the filter with the first typed character |
+| `Escape` | Clear the filter; outside the filter, quit |
+| `Q` | Quit cleanly (terminal restored) |
+| `Ctrl+C` | Quit cleanly |
 
-Le presse-papier utilise `pbcopy` (macOS), `clip` (Windows), puis `wl-copy`, `xclip` ou
-`xsel` (Linux). Aucun outil trouvé : un toast l'indique, rien ne plante.
+The clipboard uses `pbcopy` (macOS), `clip` (Windows), then `wl-copy`, `xclip`, or
+`xsel` (Linux). If no tool is found, a toast says so and nothing crashes.
 
-## Détection des projets
+## Project detection
 
-Pour chaque port, LemonPort part du répertoire de travail du processus et remonte jusqu'à
-**3 dossiers parents** à la recherche d'un manifeste :
+For each port, LemonPort starts from the process working directory and walks up to
+**3 parent directories** looking for a manifest:
 
-| Manifeste | Nom extrait | Frameworks reconnus (extrait) |
+| Manifest | Name extracted | Recognized frameworks (extract) |
 | --- | --- | --- |
 | `package.json` | `name` | Next.js, Nuxt, SvelteKit, Astro, Remix, Angular, NestJS, Fastify, Hono, Express, Expo, Electron, Vue, Svelte, Solid, React, Vite |
 | `Cargo.toml` | `package.name` | Axum, Actix Web, Rocket, Warp, Poem, Salvo, Tide |
-| `pyproject.toml` | `project.name` ou `tool.poetry.name` | FastAPI, Django, Flask, Streamlit, Gradio, Jupyter, Uvicorn |
-| `go.mod` | dernier segment du `module` | Gin, Fiber, Echo, Chi, Gorilla, Beego |
-| `composer.json` | `name` (sans le vendor) | Laravel, Symfony, Slim |
+| `pyproject.toml` | `project.name` or `tool.poetry.name` | FastAPI, Django, Flask, Streamlit, Gradio, Jupyter, Uvicorn |
+| `go.mod` | last segment of `module` | Gin, Fiber, Echo, Chi, Gorilla, Beego |
+| `composer.json` | `name` (without the vendor) | Laravel, Symfony, Slim |
 
-Un manifeste malformé, trop gros (> 512 Kio) ou illisible est ignoré : on passe au niveau
-suivant, jamais de panique. Les processus d'un autre utilisateur affichent
-`système` / `PROTÉGÉ`, avec `—` pour les informations inaccessibles.
+A malformed, oversized (> 512 KiB), or unreadable manifest is ignored: detection moves
+to the next level and never panics. Processes owned by another user are shown as
+`system` / `PROTECTED`, with `—` for inaccessible information.
 
-## Sortie JSON
+## JSON output
 
-Tableau d'objets, trié ports de développement d'abord :
+Array of objects, sorted with development ports first:
 
 ```json
 [
@@ -299,92 +298,91 @@ Tableau d'objets, trié ports de développement d'abord :
 ]
 ```
 
-Avec `--all`, les ports système sont inclus. Sans processus identifiable, `pid` vaut `null`,
-`protected` vaut `true`, et `project` est absent.
+With `--all`, system ports are included. When no process can be identified, `pid` is
+`null`, `protected` is `true`, and `project` is omitted.
 
 ## Tests
 
-La suite d'intégration lance un vrai processus listener, puis vérifie le scan, l'enrichissement
-JSON (PID, projet, framework, RAM, uptime) et la libération du port par le mode one-shot :
+The integration suite starts a real listener process, then verifies scanning, JSON
+enrichment (PID, project, framework, RAM, uptime), and port release in one-shot mode:
 
 ```bash
 cargo test --test integration -- --test-threads=1
 ```
 
-Un test vérifie aussi que les ports système (< 1024) sont masqués par défaut et
-réapparaissent avec `--all`. Il ouvre le vrai port `1023` : il est ignoré hors root et la CI
-l'exécute dans un conteneur Linux root dédié.
+A test also verifies that system ports (< 1024) are hidden by default and reappear with
+`--all`. It opens the real port `1023`: it is skipped outside root, and CI runs it in a
+dedicated root Linux container.
 
-Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est bien tué par
-`SIGKILL` après le délai de grâce de 1,5 s.
+An additional Unix test verifies that a process ignoring `SIGTERM` is killed by `SIGKILL`
+after the 1.5 s grace period.
 
-Un test TUI lance LemonPort dans un **vrai pseudo-terminal** (`portable-pty`), interprète
-l'écran avec `vt100`, filtre sur un projet puis appuie sur `Entrée` pour tuer la ligne
-sélectionnée. Il vérifie le toast de libération et que le second listener reste vivant.
-Un second test PTY vérifie qu'un listener créé après le démarrage apparaît grâce au
-rafraîchissement automatique de 2 s.
-Un troisième test PTY couvre la navigation `↑`/`↓` et `j`/`k`, ainsi que les raccourcis
-`O` (ouvrir), `C` (copier) et `R` (rafraîchir).
-Un quatrième test PTY vérifie qu'un listener arrêté disparaît de la TUI via l'auto-refresh.
-Un cinquième test PTY vérifie que l'auto-refresh respecte le filtre actif : un nouveau
-listener correspondant apparaît, un listener hors filtre reste masqué.
-Un sixième test PTY vérifie que plusieurs listeners créés entre deux scans apparaissent
-ensemble lors du rafraîchissement suivant.
-Un septième test PTY vérifie les toasts d'erreur de `O` et `C` lorsque les actions
-externes échouent.
-Un huitième test PTY vérifie les variantes majuscules `O`, `C` et `R`.
-Un neuvième test PTY vérifie que `Ctrl+C` quitte la TUI.
-Un dixième test PTY vérifie qu'Échap annule le filtre et restaure la liste complète.
-Un onzième test PTY vérifie que l'en-tête affiche le nombre de ports système masqués et
-l'incrémente quand un nouveau port système apparaît. Comme il ouvre aussi le port `1023`,
-il s'exécute dans le même conteneur root.
+A TUI test launches LemonPort in a **real pseudo-terminal** (`portable-pty`), interprets
+the screen with `vt100`, filters on a project, then presses `Enter` to kill the selected
+row. It verifies the free toast and that the second listener stays alive.
+A second PTY test verifies that a listener created after startup appears through the
+2 s automatic refresh.
+A third PTY test covers `↑`/`↓` and `j`/`k` navigation, plus the `O` (open), `C` (copy),
+and `R` (refresh) shortcuts.
+A fourth PTY test verifies that a stopped listener disappears from the TUI via auto-refresh.
+A fifth PTY test verifies that auto-refresh respects the active filter: a new matching
+listener appears while an out-of-filter listener stays hidden.
+A sixth PTY test verifies that multiple listeners created between two scans appear
+together on the next refresh.
+A seventh PTY test verifies the error toasts for `O` and `C` when external actions fail.
+An eighth PTY test covers the uppercase `O`, `C`, and `R` variants.
+A ninth PTY test verifies that `Ctrl+C` exits the TUI.
+A tenth PTY test verifies that Escape clears the filter and restores the full list.
+An eleventh PTY test verifies that the header shows the number of hidden system ports and
+increments it when a new system port appears. Because it also opens port `1023`, it runs
+in the same root container.
 
-Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
-`pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :
+Unit tests cover detection for all five manifests (`package.json`, `Cargo.toml`,
+`pyproject.toml`, `go.mod`, `composer.json`), including malformed files:
 
 ```bash
 cargo test --lib
 ```
 
-La CI publie également un rapport HTML de couverture généré par `cargo llvm-cov` dans
-l'artefact `coverage-report`.
+CI also publishes an HTML coverage report generated by `cargo llvm-cov` in the
+`coverage-report` artifact.
 
-Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
-relancé en mode helper. La CI GitHub exécute ces suites sur Linux, macOS et Windows, plus
-un job Linux en conteneur root pour les tests qui ouvrent le port privilégié `1023`.
+No external interpreter is required: the listener is the test binary itself, relaunched
+in helper mode. GitHub CI runs these suites on Linux, macOS, and Windows, plus a Linux root
+container job for the tests that open the privileged port `1023`.
 
-## Construire les binaires de release
+## Building release binaries
 
-### En local
+### Locally
 
 ```bash
 cargo build --release
 ./target/release/lemon-port --version
 ```
 
-Sous Windows : `target\release\lemon-port.exe`. La profile release active LTO,
-`codegen-units = 1` et `strip` pour un binaire compact.
+On Windows: `target\release\lemon-port.exe`. The release profile enables LTO,
+`codegen-units = 1`, and `strip` for a compact binary.
 
-### Releases GitHub automatisées
+### Automated GitHub releases
 
-Le workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) compile et
-publie les archives pour :
+The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) builds and
+publishes archives for:
 
-| Cible | Archive |
+| Target | Archive |
 | --- | --- |
-| Linux x86_64 (musl statique) | `lemon-port-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` |
+| Linux x86_64 (static musl) | `lemon-port-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` |
 | Linux aarch64 | `lemon-port-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
 | macOS Intel | `lemon-port-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
 | macOS Apple Silicon | `lemon-port-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
 | Windows x64 | `lemon-port-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
 
-Chaque archive contient le binaire, `README.md` et `LICENSE`. Un fichier `SHA256SUMS`
-est joint à la release.
+Each archive contains the binary, `README.md`, and `LICENSE`. A `SHA256SUMS` file is
+attached to the release.
 
-Trois façons de publier :
+Three ways to publish:
 
 ```bash
-# 1. Pousser un tag
+# 1. Push a tag
 git tag v0.1.0
 git push origin v0.1.0
 ```
@@ -394,12 +392,12 @@ git push origin v0.1.0
 ```
 
 ```bash
-# 3. Pousser une branche de release (pratique en CI ou sans droit de créer un tag)
+# 3. Push a release branch (useful in CI or without tag permissions)
 git push origin main:release/v0.1.0
 ```
 
-Le workflow crée (ou complète) la release GitHub avec les notes générées et les binaires.
-Les scripts d'installation pointent vers `releases/latest`.
+The workflow creates (or completes) the GitHub release with generated notes and binaries.
+The install scripts point to `releases/latest`.
 
 ## Architecture
 
@@ -409,46 +407,45 @@ lemon-port/
 ├── Cargo.lock
 ├── LICENSE
 ├── README.md
-├── install.sh              # Installeur Linux / macOS
-├── install.ps1             # Installeur Windows
+├── install.sh              # Linux / macOS installer
+├── install.ps1             # Windows installer
 ├── .github/workflows/
-│   └── release.yml         # Build multi-OS + release GitHub
+│   └── release.yml         # Multi-OS build + GitHub release
 └── src/
-    ├── lib.rs              # CLI (clap), dispatch TUI / one-shot / JSON
-    ├── main.rs             # Binaire `lemon-port`
-    ├── bin/lp.rs           # Binaire alias `lp`
-    ├── scanner.rs          # Sockets TCP LISTEN + enrichissement sysinfo
-    ├── project.rs          # cwd → manifeste → nom + framework
+    ├── lib.rs              # CLI (clap), TUI / one-shot / JSON dispatch
+    ├── main.rs             # `lemon-port` binary
+    ├── bin/lp.rs           # `lp` alias binary
+    ├── scanner.rs          # TCP LISTEN sockets + sysinfo enrichment
+    ├── project.rs          # cwd → manifest → name + framework
     ├── killer.rs           # SIGTERM → SIGKILL / TerminateProcess
-    ├── app.rs              # État TUI, filtre, toasts, presse-papier
-    └── ui.rs               # Rendu Ratatui (citron & lime), boucle d'événements
+    ├── app.rs              # TUI state, filter, toasts, clipboard
+    └── ui.rs               # Ratatui rendering (lemon & lime), event loop
 ```
 
-Choix techniques :
+Technical choices:
 
-- `netstat2` lit les tables de sockets via les API natives (pas de `netstat` à parser).
-- `sysinfo` fournit `cwd`, nom, RAM et uptime sans privilèges pour les processus de
-  l'utilisateur.
-- Les projets sont mis en cache par `cwd` pour que l'auto-refresh reste léger.
-- La terminaison s'exécute dans un thread dédié : la TUI n'est jamais figée par l'attente
-  de 1,5 s.
+- `netstat2` reads socket tables through native APIs (no `netstat` parsing).
+- `sysinfo` provides `cwd`, name, RAM, and uptime without privileges for the user's
+  processes.
+- Projects are cached by `cwd` so auto-refresh stays lightweight.
+- Termination runs in a dedicated thread: the TUI is never frozen by the 1.5 s wait.
 
-## Compatibilité & limites
+## Compatibility & limits
 
-| Plateforme | Statut | Notes |
+| Platform | Status | Notes |
 | --- | --- | --- |
-| Linux x86_64 | ✅ | Binaire musl statique disponible |
-| Linux aarch64 | ✅ | Binaire glibc |
-| macOS Intel / Apple Silicon | ✅ | `cwd` peut être refusé par macOS pour certains processus protégés |
-| Windows x64 | ✅ | Pas de `SIGTERM` console : `TerminateProcess` direct |
-| BSD / autres | ⚠️ | Compilation possible via Cargo, non testée |
+| Linux x86_64 | ✅ | Static musl binary available |
+| Linux aarch64 | ✅ | glibc binary |
+| macOS Intel / Apple Silicon | ✅ | macOS may deny `cwd` for some protected processes |
+| Windows x64 | ✅ | No console `SIGTERM`: direct `TerminateProcess` |
+| BSD / others | ⚠️ | May compile with Cargo, not tested |
 
-- Les processus appartenant à `root` (ou à un autre utilisateur) apparaissent en
-  `PROTÉGÉ` ; relancez avec `sudo` / en administrateur pour les tuer.
-- Un même port partagé par plusieurs processus (`SO_REUSEPORT`) produit une ligne par PID.
-- `docker-proxy` est affiché tel quel : LemonPort ne résout pas les noms de conteneurs.
-- Aucun privilège particulier n'est requis pour ses propres processus.
+- Processes owned by `root` (or another user) appear as `PROTECTED`; rerun with `sudo` /
+  as administrator to kill them.
+- A port shared by multiple processes (`SO_REUSEPORT`) produces one row per PID.
+- `docker-proxy` is shown as-is: LemonPort does not resolve container names.
+- No special privileges are required for your own processes.
 
-## Licence
+## License
 
 [MIT](LICENSE) © 2026 LLAStudio.

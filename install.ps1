@@ -1,9 +1,9 @@
-# 🍋 LemonPort — installateur Windows (PowerShell).
+# 🍋 LemonPort — Windows installer (PowerShell).
 #
 #   irm https://raw.githubusercontent.com/LLAStudio/LemonPort/main/install.ps1 | iex
 #
-# Paramètres : -Version, -InstallDir, -FromSource
-# Variables : $env:LEMONPORT_VERSION, $env:LEMONPORT_INSTALL_DIR
+# Parameters: -Version, -InstallDir, -FromSource
+# Variables: $env:LEMONPORT_VERSION, $env:LEMONPORT_INSTALL_DIR
 
 [CmdletBinding()]
 param(
@@ -26,20 +26,20 @@ if (-not $FromSource -and $env:LEMONPORT_FROM_SOURCE -match '^(1|true|yes)$') {
 
 if ($FromSource) {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Write-Err "Rust/Cargo est requis : https://rustup.rs"
+        Write-Err "Rust/Cargo is required: https://rustup.rs"
         exit 1
     }
-    Write-Step "Installation de LemonPort depuis les sources…"
+    Write-Step "Installing LemonPort from source…"
     cargo install --git "https://github.com/$Repo" --locked --force
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    Write-Ok "lemon-port et lp installés dans $env:USERPROFILE\.cargo\bin"
+    Write-Ok "lemon-port and lp installed in $env:USERPROFILE\.cargo\bin"
     exit 0
 }
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 } catch {
-    # PowerShell Core gère TLS automatiquement.
+    # PowerShell Core handles TLS automatically.
 }
 
 if (-not $Version) {
@@ -47,8 +47,8 @@ if (-not $Version) {
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $release.tag_name
     } catch {
-        Write-Err "Aucune release binaire disponible pour $Repo."
-        Write-Err "Installez depuis les sources : cargo install --git https://github.com/$Repo --locked"
+        Write-Err "No binary release available for $Repo."
+        Write-Err "Install from source: cargo install --git https://github.com/$Repo --locked"
         exit 1
     }
 }
@@ -62,8 +62,8 @@ if (-not $Version.StartsWith("v")) { $Version = "v$Version" }
 $architecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
 if ($architecture -ne "AMD64") {
-    Write-Err "Architecture non supportée : $architecture (binaire x64 uniquement)."
-    Write-Err "Depuis les sources : cargo install --git https://github.com/$Repo --locked"
+    Write-Err "Unsupported architecture: $architecture (x64 binary only)."
+    Write-Err "From source: cargo install --git https://github.com/$Repo --locked"
     exit 1
 }
 $Target = "x86_64-pc-windows-msvc"
@@ -81,15 +81,15 @@ try {
     $zip = Join-Path $temp $asset
     $sums = Join-Path $temp "SHA256SUMS"
 
-    Write-Step "Téléchargement de $asset…"
+    Write-Step "Downloading $asset…"
     Invoke-WebRequest -Uri "$base/$asset" -OutFile $zip
     Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sums
 
     $line = Select-String -Path $sums -Pattern " $([regex]::Escape($asset))$" | Select-Object -First 1
-    if (-not $line) { throw "Checksum introuvable pour $asset" }
+    if (-not $line) { throw "Checksum not found for $asset" }
     $expected = ($line.Line -split '\s+')[0]
     $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
-    if ($actual -ne $expected.ToLower()) { throw "Checksum invalide pour $asset" }
+    if ($actual -ne $expected.ToLower()) { throw "Invalid checksum for $asset" }
 
     $extract = Join-Path $temp "extract"
     Expand-Archive -Path $zip -DestinationPath $extract -Force
@@ -105,10 +105,10 @@ try {
         $newPath = if ($userPath.TrimEnd(';')) { $userPath.TrimEnd(';') + ";" + $InstallDir } else { $InstallDir }
         [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
         $env:Path = "$env:Path;$InstallDir"
-        Write-Host "⚠ PATH utilisateur mis à jour — ouvrez un nouveau terminal." -ForegroundColor Yellow
+        Write-Host "⚠ User PATH updated — open a new terminal." -ForegroundColor Yellow
     }
 
-    Write-Ok "LemonPort $Version installé dans $InstallDir (lemon-port.exe + lp.exe)"
+    Write-Ok "LemonPort $Version installed in $InstallDir (lemon-port.exe + lp.exe)"
     & (Join-Path $InstallDir "$Bin.exe") --version
 } catch {
     Write-Err $_.Exception.Message

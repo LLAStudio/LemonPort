@@ -1,8 +1,8 @@
-//! Rendu Ratatui et boucle d'événements de la TUI.
+//! Ratatui rendering and TUI event loop.
 //!
-//! Charte LLAStudio : citron `#FACC15`, lime `#84CC16`, fond sombre, rendu
-//! net et minimaliste. Le terminal est toujours restauré (sortie normale ou
-//! panique) pour ne jamais laisser l'utilisateur dans un écran alterné cassé.
+//! LLAStudio palette: lemon `#FACC15`, lime `#84CC16`, dark background, clean
+//! minimalist rendering. The terminal is always restored (normal exit or
+//! panic) so the user is never left in a broken alternate screen.
 
 use std::io::{self, stdout};
 
@@ -38,7 +38,7 @@ const INK_DIM: Color = Color::Rgb(76, 68, 18);
 
 type Backend = CrosstermBackend<io::Stdout>;
 
-/// Exécute la boucle TUI jusqu'à `Q` / `Échap`, puis restaure le terminal.
+/// Run the TUI loop until `Q` / Escape, then restore the terminal.
 pub fn run(app: &mut App) -> Result<()> {
     let mut terminal = init_terminal()?;
     let result = event_loop(&mut terminal, app);
@@ -137,19 +137,13 @@ fn draw_header(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visibl
 
     let count = if app.hidden_system() > 0 && !app.show_all() {
         format!(
-            "{} actif{} · {} système masqué{}",
+            "{} active · {} system port{} hidden",
             visible.len(),
-            plural(visible.len()),
             app.hidden_system(),
             plural(app.hidden_system())
         )
     } else {
-        format!(
-            "{} port{} actif{}",
-            visible.len(),
-            plural(visible.len()),
-            plural(visible.len())
-        )
+        format!("{} port{} active", visible.len(), plural(visible.len()))
     };
     frame.render_widget(
         Paragraph::new(count)
@@ -161,11 +155,11 @@ fn draw_header(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visibl
     let mut info = vec![
         Span::styled("TCP", Style::new().fg(LIME).add_modifier(Modifier::BOLD)),
         Span::styled(" · LISTEN", Style::new().fg(MUTED)),
-        Span::styled(" · scan auto 2 s", Style::new().fg(MUTED)),
+        Span::styled(" · auto-scan 2 s", Style::new().fg(MUTED)),
     ];
     if app.hidden_system() > 0 && !app.show_all() {
         info.push(Span::styled(
-            " · --all pour tout voir",
+            " · --all to show everything",
             Style::new().fg(MUTED),
         ));
     }
@@ -173,7 +167,7 @@ fn draw_header(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visibl
 
     let filter_line = if app.search_mode() {
         let shown = if app.filter().is_empty() {
-            "tapez pour filtrer…".to_string()
+            "type to filter…".to_string()
         } else {
             app.filter().to_string()
         };
@@ -185,13 +179,13 @@ fn draw_header(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visibl
     } else if app.filter().is_empty() {
         Line::from(vec![
             Span::styled("/", Style::new().fg(LEMON).add_modifier(Modifier::BOLD)),
-            Span::styled(" filtrer", Style::new().fg(MUTED)),
+            Span::styled(" filter", Style::new().fg(MUTED)),
         ])
     } else {
         Line::from(vec![
-            Span::styled("filtre : ", Style::new().fg(MUTED)),
+            Span::styled("filter: ", Style::new().fg(MUTED)),
             Span::styled(app.filter().to_string(), Style::new().fg(LEMON)),
-            Span::styled("  (/ modifier · Échap effacer)", Style::new().fg(MUTED)),
+            Span::styled("  (/ edit · Esc clear)", Style::new().fg(MUTED)),
         ])
     };
     frame.render_widget(
@@ -213,7 +207,7 @@ fn draw_table(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visible
         .padding(Padding::horizontal(1))
         .title(Line::from(vec![
             Span::styled(
-                " PORTS EN ÉCOUTE ",
+                " LISTENING PORTS ",
                 Style::new().fg(LEMON).add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!("{} ", visible.len()), Style::new().fg(MUTED)),
@@ -222,23 +216,22 @@ fn draw_table(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visible
     if visible.is_empty() {
         let (title, hint) = if !app.filter().is_empty() {
             (
-                format!("Aucun résultat pour « {} »", app.filter()),
-                "Échap pour effacer le filtre".to_string(),
+                format!("No results for “{}”", app.filter()),
+                "Esc to clear the filter".to_string(),
             )
         } else if app.hidden_system() > 0 && !app.show_all() {
             (
-                "Aucun port de développement en écoute".to_string(),
+                "No development ports listening".to_string(),
                 format!(
-                    "{} port{} système masqué{} — relancez avec --all",
+                    "{} system port{} hidden — rerun with --all",
                     app.hidden_system(),
-                    plural(app.hidden_system()),
                     plural(app.hidden_system())
                 ),
             )
         } else {
             (
-                "Aucun port TCP en écoute".to_string(),
-                "Lancez un serveur, puis appuyez sur R".to_string(),
+                "No TCP ports listening".to_string(),
+                "Start a server, then press R".to_string(),
             )
         };
 
@@ -278,10 +271,10 @@ fn draw_table(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visible
 
     let header = Row::new(vec![
         Cell::from("PORT"),
-        Cell::from("PROJET / PROCESSUS"),
+        Cell::from("PROJECT / PROCESS"),
         Cell::from("PID"),
         Cell::from("RAM"),
-        Cell::from("STATUT"),
+        Cell::from("STATUS"),
     ])
     .style(Style::new().fg(LIME).add_modifier(Modifier::BOLD));
 
@@ -342,7 +335,7 @@ fn row_for(entry: &PortEntry, selected: bool, pending: bool) -> Row<'static> {
 
     let ram = Cell::from(Line::from(Span::styled(
         if entry.memory_mb > 0.0 {
-            format!("{:.0} Mo", entry.memory_mb)
+            format!("{:.0} MB", entry.memory_mb)
         } else {
             "—".to_string()
         },
@@ -352,9 +345,9 @@ fn row_for(entry: &PortEntry, selected: bool, pending: bool) -> Row<'static> {
     let (status, color) = if pending {
         ("TERM…", DANGER)
     } else if entry.protected {
-        ("PROTÉGÉ", LEMON)
+        ("PROTECTED", LEMON)
     } else if entry.system {
-        ("SYSTÈME", MUTED)
+        ("SYSTEM", MUTED)
     } else {
         ("ACTIF", LIME)
     };
@@ -408,7 +401,7 @@ fn draw_toast(frame: &mut Frame, area: ratatui::layout::Rect, app: &App, visible
                     .map(|project| format!("{} ({})", project.name, project.label()))
                     .unwrap_or_else(|| entry.process.clone());
                 format!(
-                    " Sélection : :{} · {label} — Entrée pour libérer · O pour ouvrir",
+                    " Selected: :{} · {label} — Enter to free · O to open",
                     entry.port
                 )
             });
@@ -425,19 +418,19 @@ fn draw_footer(frame: &mut Frame, area: ratatui::layout::Rect) {
     let line = Line::from(vec![
         Span::raw(" "),
         keycap("↑↓"),
-        Span::styled(" naviguer  ", Style::new().fg(MUTED)),
-        keycap("Entrée/K"),
-        Span::styled(" tuer  ", Style::new().fg(MUTED)),
+        Span::styled(" navigate  ", Style::new().fg(MUTED)),
+        keycap("Enter/K"),
+        Span::styled(" kill  ", Style::new().fg(MUTED)),
         keycap("/"),
-        Span::styled(" filtrer  ", Style::new().fg(MUTED)),
+        Span::styled(" filter  ", Style::new().fg(MUTED)),
         keycap("O"),
-        Span::styled(" ouvrir  ", Style::new().fg(MUTED)),
+        Span::styled(" open  ", Style::new().fg(MUTED)),
         keycap("C"),
-        Span::styled(" copier  ", Style::new().fg(MUTED)),
+        Span::styled(" copy  ", Style::new().fg(MUTED)),
         keycap("R"),
-        Span::styled(" rafraîchir  ", Style::new().fg(MUTED)),
+        Span::styled(" refresh  ", Style::new().fg(MUTED)),
         keycap("Q"),
-        Span::styled(" quitter", Style::new().fg(MUTED)),
+        Span::styled(" quit", Style::new().fg(MUTED)),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
@@ -468,6 +461,6 @@ fn format_uptime(seconds: u64) -> String {
     } else if seconds < 86_400 {
         format!("{}h{:02}", seconds / 3_600, (seconds % 3_600) / 60)
     } else {
-        format!("{}j{}h", seconds / 86_400, (seconds % 86_400) / 3_600)
+        format!("{}d{}h", seconds / 86_400, (seconds % 86_400) / 3_600)
     }
 }

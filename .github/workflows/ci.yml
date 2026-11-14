@@ -28,20 +28,20 @@ jobs:
       - name: Installer Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Tests unitaires
+      - name: Unit tests
         run: cargo test --locked --lib
 
-      - name: Tests d'intégration
+      - name: Integration tests
         run: cargo test --locked --test integration -- --test-threads=1
 
   system-ports:
-    name: Ports système (root)
+    name: System ports (root)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Tester les ports système en root
+      - name: Run privileged system-port tests
         run: |
           docker run --rm --user root \
             --volume "${GITHUB_WORKSPACE}:/workspace" \
@@ -64,10 +64,10 @@ jobs:
       - name: Installer cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Générer le rapport de couverture
+      - name: Generate coverage report
         run: cargo llvm-cov --locked --all-targets --html --output-dir coverage -- --test-threads=1
 
-      - name: Publier le rapport
+      - name: Upload report
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report

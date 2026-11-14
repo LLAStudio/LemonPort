@@ -1,5 +1,5 @@
-//! État de l'application TUI : sélection, filtre, auto-refresh, toasts et
-//! suivi des terminaisons asynchrones.
+//! TUI application state: selection, filter, auto-refresh, toasts, and
+//! asynchronous termination tracking.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -99,7 +99,7 @@ impl App {
         self.toast.as_ref()
     }
 
-    /// Lignes visibles après application du filtre, dans l'ordre de tri.
+    /// Visible rows after applying the filter, in sort order.
     pub fn visible(&self) -> Vec<&PortEntry> {
         if self.filter.trim().is_empty() {
             return self.ports.iter().collect();
@@ -116,8 +116,8 @@ impl App {
             .collect()
     }
 
-    /// Gère une touche pressée. Les raccourcis ne s'appliquent pas pendant
-    /// la saisie du filtre, sauf Échap / Entrée / navigation.
+    /// Handle a key press. Shortcuts do not apply while typing in the filter,
+    /// except Escape / Enter / navigation.
     pub fn handle_key(&mut self, key: KeyEvent) {
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
@@ -147,7 +147,7 @@ impl App {
             KeyCode::Char(character)
                 if !key.modifiers.contains(KeyModifiers::CONTROL) && !character.is_control() =>
             {
-                // Frappe directe : on entre en mode filtre avec le caractère tapé.
+                // Direct typing: enter filter mode with the typed character.
                 self.search_mode = true;
                 self.filter.clear();
                 self.filter.push(character);
@@ -184,18 +184,15 @@ impl App {
         }
     }
 
-    /// À appeler à chaque tour de boucle : résultats de kill, auto-refresh,
-    /// expiration des toasts.
+    /// Called on every loop iteration: kill results, auto-refresh, toast
+    /// expiration.
     pub fn tick(&mut self) {
         if let Some(pending) = self.pending.take() {
             match pending.receiver.try_recv() {
                 Ok(report) => self.on_kill_report(report),
                 Err(TryRecvError::Empty) => self.pending = Some(pending),
                 Err(TryRecvError::Disconnected) => {
-                    self.set_toast(
-                        "La terminaison a échoué (thread interrompu)",
-                        ToastKind::Error,
-                    );
+                    self.set_toast("Termination failed (thread interrupted)", ToastKind::Error);
                 }
             }
         }
@@ -228,7 +225,7 @@ impl App {
 
     fn kill_selected(&mut self) {
         if self.pending.is_some() {
-            self.set_toast("Une terminaison est déjà en cours…", ToastKind::Info);
+            self.set_toast("A termination is already in progress…", ToastKind::Info);
             return;
         }
 
@@ -237,7 +234,7 @@ impl App {
                 .pid
                 .map(|pid| (pid, entry.port, entry.process.clone()))
         }) else {
-            self.set_toast("PID introuvable — processus protégé", ToastKind::Error);
+            self.set_toast("PID not found — protected process", ToastKind::Error);
             return;
         };
 
@@ -245,12 +242,12 @@ impl App {
             Ok(receiver) => {
                 self.pending = Some(PendingKill { pid, receiver });
                 self.set_toast(
-                    format!("Arrêt en cours — {process} (:{port}, PID {pid})…"),
+                    format!("Stopping — {process} (:{port}, PID {pid})…"),
                     ToastKind::Info,
                 );
             }
             Err(error) => self.set_toast(
-                format!("Impossible de lancer la terminaison : {error}"),
+                format!("Could not start termination: {error}"),
                 ToastKind::Error,
             ),
         }
@@ -262,75 +259,71 @@ impl App {
                 let method = if escalated { " (SIGKILL)" } else { "" };
                 self.set_toast(
                     format!(
-                        ":{} libéré — {} (PID {}){method}",
+                        ":{} freed — {} (PID {}){method}",
                         report.port, report.process, report.pid
                     ),
                     ToastKind::Success,
                 );
             }
             KillOutcome::AlreadyGone => self.set_toast(
-                format!("Le processus {} s'était déjà arrêté", report.pid),
+                format!("Process {} had already stopped", report.pid),
                 ToastKind::Info,
             ),
             KillOutcome::Failed(message) => self.set_toast(
-                format!("Échec sur :{} — {message}", report.port),
+                format!("Failed on :{} — {message}", report.port),
                 ToastKind::Error,
             ),
         }
-        // Reflète immédiatement la disparition (ou non) du port.
+        // Immediately reflect whether the port disappeared.
         self.reload(false);
     }
 
     fn open_selected(&mut self) {
         let Some(port) = self.selected_entry().map(|entry| entry.port) else {
-            self.set_toast("Aucun port sélectionné", ToastKind::Info);
+            self.set_toast("No port selected", ToastKind::Info);
             return;
         };
         let url = format!("http://localhost:{port}");
         if let Some(error) = external_action_error() {
-            self.set_toast(
-                format!("Impossible d'ouvrir le navigateur : {error}"),
-                ToastKind::Error,
-            );
+            self.set_toast(format!("Could not open browser: {error}"), ToastKind::Error);
             return;
         }
         if external_actions_disabled() {
-            self.set_toast(format!("Ouverture de {url}"), ToastKind::Success);
+            self.set_toast(format!("Opened {url}"), ToastKind::Success);
             return;
         }
         match open::that(&url) {
-            Ok(()) => self.set_toast(format!("Ouverture de {url}"), ToastKind::Success),
-            Err(error) => self.set_toast(
-                format!("Impossible d'ouvrir le navigateur : {error}"),
-                ToastKind::Error,
-            ),
+            Ok(()) => self.set_toast(format!("Opened {url}"), ToastKind::Success),
+            Err(error) => {
+                self.set_toast(format!("Could not open browser: {error}"), ToastKind::Error)
+            }
         }
     }
 
     fn copy_selected(&mut self) {
         let Some(port) = self.selected_entry().map(|entry| entry.port) else {
-            self.set_toast("Aucun port sélectionné", ToastKind::Info);
+            self.set_toast("No port selected", ToastKind::Info);
             return;
         };
         let url = format!("http://localhost:{port}");
         if let Some(error) = external_action_error() {
-            self.set_toast(format!("Presse-papier : {error}"), ToastKind::Error);
+            self.set_toast(format!("Clipboard: {error}"), ToastKind::Error);
             return;
         }
         if external_actions_disabled() {
-            self.set_toast(format!("URL copiée : {url}"), ToastKind::Success);
+            self.set_toast(format!("URL copied: {url}"), ToastKind::Success);
             return;
         }
         match copy_to_clipboard(&url) {
-            Ok(()) => self.set_toast(format!("URL copiée : {url}"), ToastKind::Success),
-            Err(error) => self.set_toast(format!("Presse-papier : {error}"), ToastKind::Error),
+            Ok(()) => self.set_toast(format!("URL copied: {url}"), ToastKind::Success),
+            Err(error) => self.set_toast(format!("Clipboard: {error}"), ToastKind::Error),
         }
     }
 
     fn refresh_manual(&mut self) {
         self.reload(true);
         if self.toast.is_none() {
-            self.set_toast("Ports rafraîchis", ToastKind::Info);
+            self.set_toast("Ports refreshed", ToastKind::Info);
         }
     }
 
@@ -355,7 +348,7 @@ impl App {
                 self.selected = position.unwrap_or(0).min(visible.len().saturating_sub(1));
             }
             Err(error) => {
-                self.set_toast(format!("Scan impossible : {error}"), ToastKind::Error);
+                self.set_toast(format!("Scan failed: {error}"), ToastKind::Error);
             }
         }
 
@@ -371,8 +364,8 @@ impl App {
     }
 }
 
-/// Court-circuite les actions externes dans les tests PTY, qui doivent rester
-/// hermétiques (pas de navigateur ni de presse-papier sur les runners CI).
+/// Bypass external actions in PTY tests, which must stay hermetic (no browser
+/// or clipboard on CI runners).
 fn external_actions_disabled() -> bool {
     #[cfg(debug_assertions)]
     {
@@ -386,7 +379,7 @@ fn external_actions_disabled() -> bool {
 
 #[cfg(debug_assertions)]
 fn external_action_error() -> Option<&'static str> {
-    std::env::var_os("LEMONPORT_TEST_FAIL_EXTERNAL").map(|_| "échec simulé")
+    std::env::var_os("LEMONPORT_TEST_FAIL_EXTERNAL").map(|_| "simulated failure")
 }
 
 #[cfg(not(debug_assertions))]
@@ -428,8 +421,7 @@ fn copy_to_clipboard(text: &str) -> Result<(), String> {
             ("xclip", &["-selection", "clipboard"]),
             ("xsel", &["--clipboard", "--input"]),
         ];
-        let mut last_error =
-            "aucun outil de presse-papier trouvé (installez wl-clipboard ou xclip)".to_string();
+        let mut last_error = "no clipboard tool found (install wl-clipboard or xclip)".to_string();
         for (command, args) in candidates {
             match pipe_to(command, args, text) {
                 Ok(()) => return Ok(()),
@@ -442,7 +434,7 @@ fn copy_to_clipboard(text: &str) -> Result<(), String> {
     #[cfg(not(any(unix, target_os = "windows")))]
     {
         let _ = text;
-        Err("presse-papier non supporté sur cette plateforme".to_string())
+        Err("clipboard not supported on this platform".to_string())
     }
 }
 
@@ -458,7 +450,7 @@ fn pipe_to(command: &str, args: &[&str], text: &str) -> Result<(), String> {
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(text.as_bytes())
-            .map_err(|error| format!("écriture vers {command} : {error}"))?;
+            .map_err(|error| format!("write to {command}: {error}"))?;
     }
 
     let status = child
@@ -467,6 +459,6 @@ fn pipe_to(command: &str, args: &[&str], text: &str) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
-        Err(format!("{command} a échoué"))
+        Err(format!("{command} failed"))
     }
 }

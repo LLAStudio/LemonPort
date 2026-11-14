@@ -1,14 +1,14 @@
-//! Tests d'intégration de bout en bout.
+//! End-to-end integration tests.
 //!
-//! Chaque test lance un vrai processus qui écoute sur un port TCP, puis pilote
-//! le binaire `lemon-port` comme un utilisateur le ferait :
-//! - `--json` doit retrouver le port, le PID, le projet et les métriques ;
-//! - le mode one-shot doit tuer le processus et libérer le port ;
-//! - un processus qui ignore SIGTERM doit finir par SIGKILL (Unix).
+//! Each test starts a real process listening on a TCP port, then drives the
+//! `lemon-port` binary as a user would:
+//! - `--json` must find the port, PID, project, and metrics;
+//! - one-shot mode must kill the process and free the port;
+//! - a process ignoring SIGTERM must eventually receive SIGKILL (Unix).
 //!
-//! Le processus listener est le binaire de test lui-même, relancé avec le
-//! filtre `helper_listener` : aucun interpréteur externe (Python, Node…)
-//! n'est requis, et le test reste cross-platform.
+//! The listener process is the test binary itself, relaunched with the
+//! `helper_listener` filter: no external interpreter (Python, Node…) is
+//! required, and the test stays cross-platform.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -23,38 +23,38 @@ use std::time::{Duration, Instant};
 use portable_pty::{native_pty_system, Child as PtyChild, CommandBuilder, MasterPty, PtySize};
 use serde_json::Value;
 
-/// Chemin du binaire compilé, fourni par Cargo aux tests d'intégration.
+/// Compiled binary path provided by Cargo to integration tests.
 const BIN: &str = env!("CARGO_BIN_EXE_lemon-port");
 const PORT_FILE_ENV: &str = "LEMONPORT_TEST_PORT_FILE";
 
 #[test]
 fn helper_listener() {
-    // En temps normal, ce test ne fait rien : il ne devient un listener que
-    // lorsqu'il est relancé par `spawn_listener`.
+    // Normally this test does nothing: it only becomes a listener when
+    // relaunched by `spawn_listener`.
     let Some(port_file) = std::env::var_os(PORT_FILE_ENV) else {
         return;
     };
 
-    // Sur Unix, ce listener peut volontairement ignorer SIGTERM pour tester
-    // l'escalade vers SIGKILL. Le handler est armé avant le bind : dès que le
-    // port est publié, il est déjà ignoré.
+    // On Unix, this listener can deliberately ignore SIGTERM to test
+    // escalation to SIGKILL. The handler is armed before bind, so it is
+    // already ignored as soon as the port is published.
     #[cfg(unix)]
     if std::env::var_os("LEMONPORT_TEST_IGNORE_SIGTERM").is_some() {
-        // SAFETY: SIG_IGN est un gestionnaire valide, permanent, et le handler
-        // ne touche à aucun état Rust.
+        // SAFETY: SIG_IGN is a valid, permanent handler and touches no Rust
+        // state.
         unsafe {
             libc::signal(libc::SIGTERM, libc::SIG_IGN);
         }
     }
 
-    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind du listener");
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind listener");
     let port = listener
         .local_addr()
-        .expect("adresse locale du listener")
+        .expect("listener local address")
         .port();
-    fs::write(port_file, port.to_string()).expect("écriture du port");
+    fs::write(port_file, port.to_string()).expect("write port");
 
-    // Reste en LISTEN jusqu'à ce que le test parent (ou LemonPort) tue le processus.
+    // Stay in LISTEN until the parent test (or LemonPort) kills the process.
     for stream in listener.incoming() {
         let _ = stream;
     }
@@ -66,11 +66,11 @@ fn scan_and_json_detect_listener_and_project() {
     let output = run_cli(&["--json", "--all"]);
     assert_success(&output);
 
-    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("JSON valide");
+    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("valid JSON");
     let entry = ports
         .iter()
         .find(|entry| entry["port"].as_u64() == Some(u64::from(listener.port)))
-        .expect("le port du listener doit apparaître dans le JSON");
+        .expect("the listener port must appear in the JSON");
 
     assert_eq!(entry["protocol"].as_str(), Some("TCP"));
     assert_eq!(entry["pid"].as_u64(), Some(u64::from(listener.child.id())));
@@ -88,36 +88,36 @@ fn scan_and_json_detect_listener_and_project() {
     assert!(entry["uptime_seconds"].as_u64().is_some());
 }
 
-// Ce test ouvre le vrai port 1023 : il tourne dans un conteneur CI root.
+// This test opens the real port 1023: it runs in a root CI container.
 #[cfg(unix)]
 #[test]
 fn system_ports_are_hidden_without_all_and_present_with_all() {
     if !is_root() {
-        eprintln!("test ignoré : le port 1023 nécessite root (conteneur CI dédié)");
+        eprintln!("test skipped: port 1023 requires root (dedicated CI container)");
         return;
     }
 
     let _listener = std::net::TcpListener::bind(("127.0.0.1", 1023))
-        .expect("bind du port privilégié 1023 (root requis)");
+        .expect("bind privileged port 1023 (root required)");
     let port = 1023_u16;
 
     let hidden = run_cli(&["--json"]);
     assert_success(&hidden);
-    let ports: Vec<Value> = serde_json::from_slice(&hidden.stdout).expect("JSON valide");
+    let ports: Vec<Value> = serde_json::from_slice(&hidden.stdout).expect("valid JSON");
     assert!(
         !ports
             .iter()
             .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
-        "le port système doit être masqué sans --all"
+        "the system port must be hidden without --all"
     );
 
     let all = run_cli(&["--json", "--all"]);
     assert_success(&all);
-    let ports: Vec<Value> = serde_json::from_slice(&all.stdout).expect("JSON valide");
+    let ports: Vec<Value> = serde_json::from_slice(&all.stdout).expect("valid JSON");
     let entry = ports
         .iter()
         .find(|entry| entry["port"].as_u64() == Some(u64::from(port)))
-        .expect("le port système doit apparaître avec --all");
+        .expect("the system port must appear with --all");
     assert_eq!(entry["system"].as_bool(), Some(true));
     assert_eq!(entry["port"].as_u64(), Some(u64::from(port)));
 }
@@ -134,30 +134,30 @@ fn one_shot_kills_listener_and_frees_port() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains(&format!(":{port}")),
-        "confirmation attendue pour :{port}, stdout: {stdout}"
+        "confirmation expected for :{port}, stdout: {stdout}"
     );
     assert!(
-        stdout.contains("libéré"),
-        "confirmation de libération attendue, stdout: {stdout}"
+        stdout.contains("freed"),
+        "free confirmation expected, stdout: {stdout}"
     );
 
     assert!(
         wait_for_exit(&mut listener.child, Duration::from_secs(5)),
-        "le listener est toujours vivant après le one-shot"
+        "the listener is still alive after one-shot"
     );
 
     let output = run_cli(&["--json", "--all"]);
     assert_success(&output);
-    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("JSON valide");
+    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("valid JSON");
     assert!(
         !ports
             .iter()
             .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
-        "le port :{port} est encore en écoute après le kill"
+        "port :{port} is still listening after the kill"
     );
 }
 
-/// Vérifie la séquence propre : SIGTERM ignoré, délai de grâce, puis SIGKILL.
+/// Verify the clean sequence: SIGTERM ignored, grace period, then SIGKILL.
 #[cfg(unix)]
 #[test]
 fn one_shot_escalates_to_sigkill_for_stubborn_process() {
@@ -173,11 +173,11 @@ fn one_shot_escalates_to_sigkill_for_stubborn_process() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("(SIGKILL)"),
-        "SIGKILL attendu après le délai de grâce, stdout: {stdout}"
+        "SIGKILL expected after the grace period, stdout: {stdout}"
     );
     assert!(
         elapsed >= Duration::from_millis(1400),
-        "SIGKILL envoyé trop tôt ({elapsed:?}) : SIGTERM n'a pas été ignoré"
+        "SIGKILL sent too early ({elapsed:?}): SIGTERM was not ignored"
     );
     assert!(
         elapsed < Duration::from_secs(10),
@@ -185,17 +185,17 @@ fn one_shot_escalates_to_sigkill_for_stubborn_process() {
     );
     assert!(
         wait_for_exit(&mut listener.child, Duration::from_secs(5)),
-        "le processus qui ignore SIGTERM est toujours vivant"
+        "the process ignoring SIGTERM is still alive"
     );
 
     let output = run_cli(&["--json", "--all"]);
     assert_success(&output);
-    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("JSON valide");
+    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("valid JSON");
     assert!(
         !ports
             .iter()
             .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
-        "le port :{port} est encore en écoute après SIGKILL"
+        "port :{port} is still listening after SIGKILL"
     );
 }
 
@@ -214,7 +214,7 @@ fn tui_filter_and_kill_shortcut() {
                 && screen.contains(&second_port),
             Duration::from_secs(10)
         ),
-        "écran initial incomplet:\n{}",
+        "incomplete initial screen:\n{}",
         tui.screen()
     );
 
@@ -224,30 +224,30 @@ fn tui_filter_and_kill_shortcut() {
             |screen| screen.contains("/tui-project-a") && !screen.contains("tui-project-b"),
             Duration::from_secs(5)
         ),
-        "le filtre n'a pas isolé le projet A:\n{}",
+        "the filter did not isolate project A:\n{}",
         tui.screen()
     );
 
-    // Entrée en mode recherche : tue la ligne sélectionnée (projet A filtré).
+    // Search mode: kill the selected row (filtered project A).
     tui.send(b"\r");
     assert!(
-        tui.wait_for(|screen| screen.contains("libéré"), Duration::from_secs(8)),
-        "aucun toast de libération:\n{}",
+        tui.wait_for(|screen| screen.contains("freed"), Duration::from_secs(8)),
+        "no free toast:\n{}",
         tui.screen()
     );
     assert!(
         wait_for_exit(&mut first.child, Duration::from_secs(5)),
-        "le listener filtré n'a pas été tué"
+        "the filtered listener was not killed"
     );
     assert!(
         second.child.try_wait().ok().flatten().is_none(),
-        "le mauvais listener a été tué"
+        "the wrong listener was killed"
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -259,14 +259,14 @@ fn tui_auto_refresh_detects_new_listener() {
             |screen| screen.contains("LemonPort"),
             Duration::from_secs(10)
         ),
-        "écran initial incomplet:\n{}",
+        "incomplete initial screen:\n{}",
         tui.screen()
     );
 
     let initial = tui.screen();
     assert!(
         !initial.contains("tui-auto-refresh-project"),
-        "le projet ne doit pas exister avant sa création:\n{initial}"
+        "project must not exist before creation:\n{initial}"
     );
 
     let listener = spawn_listener("tui-auto-refresh-project");
@@ -276,14 +276,14 @@ fn tui_auto_refresh_detects_new_listener() {
             |screen| screen.contains(&port) && screen.contains("tui-auto-refresh-project"),
             Duration::from_secs(10)
         ),
-        "le listener créé après le démarrage n'a pas été détecté:\n{}",
+        "listener created after startup was not detected:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -295,7 +295,7 @@ fn tui_auto_refresh_adds_multiple_listeners() {
             |screen| screen.contains("LemonPort"),
             Duration::from_secs(10)
         ),
-        "écran initial incomplet:\n{}",
+        "incomplete initial screen:\n{}",
         tui.screen()
     );
 
@@ -304,7 +304,7 @@ fn tui_auto_refresh_adds_multiple_listeners() {
     for name in names {
         assert!(
             !initial.contains(name),
-            "le projet {name} ne doit pas exister avant sa création:\n{initial}"
+            "project {name} must not exist before creation:\n{initial}"
         );
     }
 
@@ -322,14 +322,14 @@ fn tui_auto_refresh_adds_multiple_listeners() {
             },
             Duration::from_secs(10)
         ),
-        "les trois nouveaux listeners doivent apparaître ensemble:\n{}",
+        "all three new listeners must appear together:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -344,7 +344,7 @@ fn tui_auto_refresh_respects_active_filter() {
             |screen| screen.contains("LemonPort") && screen.contains(&hidden_port),
             Duration::from_secs(10)
         ),
-        "le listener hors filtre doit être visible avant le filtrage:\n{}",
+        "the out-of-filter listener must be visible before filtering:\n{}",
         tui.screen()
     );
 
@@ -354,14 +354,14 @@ fn tui_auto_refresh_respects_active_filter() {
             |screen| screen.contains("/tui-filter-keep"),
             Duration::from_secs(3)
         ),
-        "le filtre doit être actif:\n{}",
+        "the filter must be active:\n{}",
         tui.screen()
     );
 
     let filtered = tui.screen();
     assert!(
         !filtered.contains(&hidden_port) && !filtered.contains("tui-filter-drop"),
-        "le listener hors filtre doit être masqué:\n{filtered}"
+        "the out-of-filter listener must be hidden:\n{filtered}"
     );
 
     let kept = spawn_listener("tui-filter-keep");
@@ -371,25 +371,25 @@ fn tui_auto_refresh_respects_active_filter() {
             |screen| screen.contains(&kept_port) && screen.contains("tui-filter-keep"),
             Duration::from_secs(10)
         ),
-        "le nouveau listener correspondant au filtre doit apparaître:\n{}",
+        "the new matching listener must appear:\n{}",
         tui.screen()
     );
 
     let screen = tui.screen();
     assert!(
         screen.contains("/tui-filter-keep"),
-        "le filtre doit rester actif après l'auto-refresh:\n{screen}"
+        "the filter must remain active after auto-refresh:\n{screen}"
     );
     assert!(
         !screen.contains(&hidden_port) && !screen.contains("tui-filter-drop"),
-        "le listener hors filtre doit rester masqué après l'auto-refresh:\n{screen}"
+        "the out-of-filter listener must stay hidden after auto-refresh:\n{screen}"
     );
 
-    // Ctrl+C quitte même lorsque la saisie du filtre est active.
+    // Ctrl+C exits even while filter input is active.
     tui.send(b"\x03");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -401,14 +401,14 @@ fn tui_ctrl_c_quits() {
             |screen| screen.contains("LemonPort"),
             Duration::from_secs(10)
         ),
-        "écran initial incomplet:\n{}",
+        "incomplete initial screen:\n{}",
         tui.screen()
     );
 
     tui.send(b"\x03");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "Ctrl+C doit quitter la TUI"
+        "Ctrl+C must exit the TUI"
     );
 }
 
@@ -425,7 +425,7 @@ fn tui_escape_clears_filter() {
             |screen| screen.contains(&first_port) && screen.contains(&second_port),
             Duration::from_secs(10)
         ),
-        "les deux listeners doivent être visibles:\n{}",
+        "both listeners must be visible:\n{}",
         tui.screen()
     );
 
@@ -435,7 +435,7 @@ fn tui_escape_clears_filter() {
             |screen| screen.contains("/tui-esc-first") && !screen.contains(&second_port),
             Duration::from_secs(3)
         ),
-        "le filtre doit masquer le second listener:\n{}",
+        "the filter must hide the second listener:\n{}",
         tui.screen()
     );
 
@@ -449,14 +449,14 @@ fn tui_escape_clears_filter() {
                 && !screen.contains("/tui-esc-first"),
             Duration::from_secs(3)
         ),
-        "Échap doit annuler le filtre et restaurer la liste complète:\n{}",
+        "Escape must clear the filter and restore the full list:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -464,7 +464,7 @@ fn tui_escape_clears_filter() {
 #[test]
 fn tui_header_shows_hidden_system_port_count() {
     if !is_root() {
-        eprintln!("test ignoré : le port 1023 nécessite root (conteneur CI dédié)");
+        eprintln!("test skipped: port 1023 requires root (dedicated CI container)");
         return;
     }
 
@@ -474,49 +474,49 @@ fn tui_header_shows_hidden_system_port_count() {
             |screen| screen.contains("LemonPort"),
             Duration::from_secs(10)
         ),
-        "écran initial incomplet:\n{}",
+        "incomplete initial screen:\n{}",
         tui.screen()
     );
 
     let baseline = hidden_system_count(&tui.screen()).unwrap_or(0);
     let expected = baseline + 1;
 
-    // Le listener reste dans le processus de test : il doit uniquement
-    // incrémenter le compteur masqué, sans apparaître dans le tableau.
+    // The listener stays in the test process: it must only increment the
+    // hidden counter without appearing in the table.
     let _hidden = std::net::TcpListener::bind(("127.0.0.1", 1023))
-        .expect("bind du port privilégié 1023 (root requis)");
+        .expect("bind privileged port 1023 (root required)");
 
     assert!(
         tui.wait_for(
             |screen| hidden_system_count(screen) == Some(expected) && !screen.contains(":1023"),
             Duration::from_secs(10)
         ),
-        "l'en-tête doit afficher {expected} port(s) système masqué(s):\n{}",
+        "the header must show {expected} hidden system port(s):\n{}",
         tui.screen()
     );
     assert!(
-        tui.screen().contains("--all pour tout voir"),
-        "l'en-tête doit inviter à utiliser --all:\n{}",
+        tui.screen().contains("--all to show everything"),
+        "the header must suggest using --all:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
 #[cfg(unix)]
 fn hidden_system_count(screen: &str) -> Option<usize> {
-    let marker = " système masqué";
+    let marker = " system port";
     let index = screen.find(marker)?;
     screen[..index].split_whitespace().last()?.parse().ok()
 }
 
 #[cfg(unix)]
 fn is_root() -> bool {
-    // SAFETY: geteuid n'a aucune précondition et ne modifie aucun état.
+    // SAFETY: geteuid has no preconditions and modifies no state.
     unsafe { libc::geteuid() == 0 }
 }
 
@@ -531,29 +531,26 @@ fn tui_auto_refresh_removes_stopped_listener() {
             |screen| screen.contains(&port) && screen.contains("tui-stopped-project"),
             Duration::from_secs(10)
         ),
-        "le listener initial doit être visible:\n{}",
+        "the initial listener must be visible:\n{}",
         tui.screen()
     );
 
-    listener.child.kill().expect("arrêt du listener");
-    listener
-        .child
-        .wait()
-        .expect("attente de l'arrêt du listener");
+    listener.child.kill().expect("stop listener");
+    listener.child.wait().expect("wait for listener stop");
 
     assert!(
         tui.wait_for(
             |screen| !screen.contains(&port) && !screen.contains("tui-stopped-project"),
             Duration::from_secs(10)
         ),
-        "le listener arrêté est toujours affiché après l'auto-refresh:\n{}",
+        "the stopped listener is still shown after auto-refresh:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -571,11 +568,11 @@ fn tui_shortcuts_and_keyboard_navigation() {
             |screen| screen.contains(&first_port) && screen.contains(&second_port),
             Duration::from_secs(10)
         ),
-        "les deux listeners doivent être visibles:\n{}",
+        "both listeners must be visible:\n{}",
         tui.screen()
     );
 
-    let initial_port = selected_port(&tui.screen()).expect("un port doit être sélectionné");
+    let initial_port = selected_port(&tui.screen()).expect("a port must be selected");
 
     tui.send(b"j");
     assert!(
@@ -583,7 +580,7 @@ fn tui_shortcuts_and_keyboard_navigation() {
             |screen| selected_port(screen) != Some(initial_port),
             Duration::from_secs(3)
         ),
-        "j doit déplacer la sélection vers le bas:\n{}",
+        "j must move the selection down:\n{}",
         tui.screen()
     );
     tui.send(b"k");
@@ -592,7 +589,7 @@ fn tui_shortcuts_and_keyboard_navigation() {
             |screen| selected_port(screen) == Some(initial_port),
             Duration::from_secs(3)
         ),
-        "k doit remonter la sélection:\n{}",
+        "k must move the selection up:\n{}",
         tui.screen()
     );
 
@@ -602,7 +599,7 @@ fn tui_shortcuts_and_keyboard_navigation() {
             |screen| selected_port(screen) != Some(initial_port),
             Duration::from_secs(3)
         ),
-        "↓ doit déplacer la sélection:\n{}",
+        "↓ must move the selection:\n{}",
         tui.screen()
     );
     tui.send(b"\x1b[A");
@@ -611,17 +608,17 @@ fn tui_shortcuts_and_keyboard_navigation() {
             |screen| selected_port(screen) == Some(initial_port),
             Duration::from_secs(3)
         ),
-        "↑ doit remonter la sélection:\n{}",
+        "↑ must move the selection up:\n{}",
         tui.screen()
     );
 
     tui.send(b"r");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Ports rafraîchis"),
+            |screen| screen.contains("Ports refreshed"),
             Duration::from_secs(3)
         ),
-        "R doit afficher le toast de rafraîchissement:\n{}",
+        "R must show the refresh toast:\n{}",
         tui.screen()
     );
 
@@ -629,27 +626,27 @@ fn tui_shortcuts_and_keyboard_navigation() {
     tui.send(b"o");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Ouverture de") && screen.contains(&url),
+            |screen| screen.contains("Opened") && screen.contains(&url),
             Duration::from_secs(3)
         ),
-        "O doit ouvrir le port sélectionné:\n{}",
+        "O must open the selected port:\n{}",
         tui.screen()
     );
 
     tui.send(b"c");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("URL copiée") && screen.contains(&url),
+            |screen| screen.contains("URL copied") && screen.contains(&url),
             Duration::from_secs(3)
         ),
-        "C doit copier l'URL du port sélectionné:\n{}",
+        "C must copy the selected port URL:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -665,47 +662,47 @@ fn tui_uppercase_shortcuts() {
             |screen| screen.contains(&port) && screen.contains("tui-uppercase-shortcuts"),
             Duration::from_secs(10)
         ),
-        "le listener doit être visible:\n{}",
+        "the listener must be visible:\n{}",
         tui.screen()
     );
 
-    let selected = selected_port(&tui.screen()).expect("un port doit être sélectionné");
+    let selected = selected_port(&tui.screen()).expect("a port must be selected");
     let url = format!("http://localhost:{selected}");
 
     tui.send(b"R");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Ports rafraîchis"),
+            |screen| screen.contains("Ports refreshed"),
             Duration::from_secs(3)
         ),
-        "R majuscule doit rafraîchir les ports:\n{}",
+        "uppercase R must refresh the ports:\n{}",
         tui.screen()
     );
 
     tui.send(b"O");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Ouverture de") && screen.contains(&url),
+            |screen| screen.contains("Opened") && screen.contains(&url),
             Duration::from_secs(3)
         ),
-        "O majuscule doit ouvrir le port sélectionné:\n{}",
+        "uppercase O must open the selected port:\n{}",
         tui.screen()
     );
 
     tui.send(b"C");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("URL copiée") && screen.contains(&url),
+            |screen| screen.contains("URL copied") && screen.contains(&url),
             Duration::from_secs(3)
         ),
-        "C majuscule doit copier l'URL du port sélectionné:\n{}",
+        "uppercase C must copy the selected port URL:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -718,34 +715,34 @@ fn tui_shortcuts_report_external_action_failures() {
 
     assert!(
         tui.wait_for(|screen| screen.contains(&port), Duration::from_secs(10)),
-        "le listener doit être visible:\n{}",
+        "the listener must be visible:\n{}",
         tui.screen()
     );
 
     tui.send(b"o");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Impossible d'ouvrir le navigateur"),
+            |screen| screen.contains("Could not open browser"),
             Duration::from_secs(3)
         ),
-        "O doit afficher l'erreur d'ouverture:\n{}",
+        "O must show the open error:\n{}",
         tui.screen()
     );
 
     tui.send(b"c");
     assert!(
         tui.wait_for(
-            |screen| screen.contains("Presse-papier :"),
+            |screen| screen.contains("Clipboard:"),
             Duration::from_secs(3)
         ),
-        "C doit afficher l'erreur de presse-papier:\n{}",
+        "C must show the clipboard error:\n{}",
         tui.screen()
     );
 
     tui.send(b"q");
     assert!(
         tui.wait_for_exit(Duration::from_secs(5)),
-        "la TUI ne s'est pas arrêtée"
+        "the TUI did not exit"
     );
 }
 
@@ -760,7 +757,7 @@ fn selected_port(screen: &str) -> Option<u16> {
     digits.parse().ok()
 }
 
-/// TUI lancée dans un vrai pseudo-terminal, avec écran vt100.
+/// TUI launched in a real pseudo-terminal, with a vt100 screen.
 struct TuiSession {
     child: Box<dyn PtyChild + Send>,
     writer: Box<dyn Write + Send>,
@@ -787,7 +784,7 @@ impl TuiSession {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .expect("ouverture du pseudo-terminal");
+            .expect("open the pseudo-terminal");
 
         let mut command = CommandBuilder::new(BIN);
         for argument in arguments {
@@ -801,16 +798,16 @@ impl TuiSession {
         let child = pair
             .slave
             .spawn_command(command)
-            .expect("lancement de la TUI dans le pty");
+            .expect("launch the TUI in the pty");
 
         let mut reader = pair
             .master
             .try_clone_reader()
-            .expect("lecture du pseudo-terminal");
+            .expect("read the pseudo-terminal");
         let writer = pair
             .master
             .take_writer()
-            .expect("écriture vers le pseudo-terminal");
+            .expect("write to the pseudo-terminal");
         drop(pair.slave);
         let master = pair.master;
 
@@ -841,7 +838,7 @@ impl TuiSession {
     }
 
     fn send(&mut self, bytes: &[u8]) {
-        self.writer.write_all(bytes).expect("écriture pty");
+        self.writer.write_all(bytes).expect("write pty");
         self.writer.flush().expect("flush pty");
     }
 
@@ -893,12 +890,12 @@ impl Drop for TuiSession {
     }
 }
 
-/// Processus listener jetable, avec nettoyage garanti.
+/// Disposable listener process with guaranteed cleanup.
 struct Listener {
     child: Child,
     port: u16,
-    // Déclaré en dernier pour être supprimé après l'arrêt du processus,
-    // dont ce dossier est le répertoire de travail.
+    // Declared last so it is removed after the process stops; this folder is
+    // the process working directory.
     _project: TempDir,
 }
 
@@ -918,10 +915,10 @@ fn spawn_listener_with(project_name: &str, ignore_sigterm: bool) -> Listener {
     let manifest = format!(
         r#"{{"name":"{project_name}","dependencies":{{"next":"15.0.0","react":"19.0.0"}}}}"#
     );
-    fs::write(project.path().join("package.json"), manifest).expect("écriture du package.json");
+    fs::write(project.path().join("package.json"), manifest).expect("write package.json");
 
     let port_file = project.path().join("port.txt");
-    let executable = std::env::current_exe().expect("chemin du binaire de test");
+    let executable = std::env::current_exe().expect("test binary path");
 
     let mut command = Command::new(executable);
     command
@@ -939,7 +936,7 @@ fn spawn_listener_with(project_name: &str, ignore_sigterm: bool) -> Listener {
     #[cfg(not(unix))]
     let _ = ignore_sigterm;
 
-    let mut child = command.spawn().expect("lancement du listener de test");
+    let mut child = command.spawn().expect("launch the test listener");
 
     let deadline = Instant::now() + Duration::from_secs(10);
     let port = loop {
@@ -950,13 +947,13 @@ fn spawn_listener_with(project_name: &str, ignore_sigterm: bool) -> Listener {
         }
 
         if let Ok(Some(status)) = child.try_wait() {
-            panic!("le listener de test s'est arrêté prématurément : {status}");
+            panic!("the test listener exited early: {status}");
         }
 
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("le listener de test n'a pas écrit son port dans les 10 s");
+            panic!("the test listener did not write its port within 10 s");
         }
 
         thread::sleep(Duration::from_millis(50));
@@ -979,13 +976,13 @@ fn run_cli_with_env(arguments: &[&str], variables: &[(&str, &str)]) -> Output {
     for (key, value) in variables {
         command.env(key, value);
     }
-    command.output().expect("exécution de lemon-port")
+    command.output().expect("run lemon-port")
 }
 
 fn assert_success(output: &Output) {
     assert!(
         output.status.success(),
-        "lemon-port a échoué (code {:?})\nstdout: {}\nstderr: {}",
+        "lemon-port failed (code {:?})\nstdout: {}\nstderr: {}",
         output.status.code(),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -1007,7 +1004,7 @@ fn wait_for_exit(child: &mut Child, timeout: Duration) -> bool {
     }
 }
 
-/// Dossier temporaire supprimé automatiquement.
+/// Temporary directory removed automatically.
 struct TempDir {
     path: PathBuf,
 }
@@ -1019,7 +1016,7 @@ impl TempDir {
         let path =
             std::env::temp_dir().join(format!("lemon-port-test-{label}-{}-{id}", process::id()));
         let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).expect("création du dossier temporaire");
+        fs::create_dir_all(&path).expect("create temporary directory");
         Self { path }
     }
 
