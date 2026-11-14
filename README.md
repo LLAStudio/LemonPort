@@ -325,6 +325,9 @@ Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, 
 cargo test --lib
 ```
 
+La CI publie également un rapport HTML de couverture généré par `cargo llvm-cov` dans
+l'artefact `coverage-report`.
+
 Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
 relancé en mode helper. La CI GitHub exécute ces suites sur Linux, macOS et Windows.
 
