@@ -434,6 +434,54 @@ fn tui_ctrl_c_quits() {
 }
 
 #[test]
+fn tui_escape_clears_filter() {
+    let first = spawn_listener("tui-esc-first");
+    let second = spawn_listener("tui-esc-second");
+    let first_port = format!(":{}", first.port);
+    let second_port = format!(":{}", second.port);
+    let mut tui = TuiSession::spawn();
+
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&first_port) && screen.contains(&second_port),
+            Duration::from_secs(10)
+        ),
+        "les deux listeners doivent être visibles:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"/tui-esc-first");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("/tui-esc-first") && !screen.contains(&second_port),
+            Duration::from_secs(3)
+        ),
+        "le filtre doit masquer le second listener:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"\x1b");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&first_port)
+                && screen.contains(&second_port)
+                && screen.contains("tui-esc-first")
+                && screen.contains("tui-esc-second")
+                && !screen.contains("/tui-esc-first"),
+            Duration::from_secs(3)
+        ),
+        "Échap doit annuler le filtre et restaurer la liste complète:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[test]
 fn tui_auto_refresh_removes_stopped_listener() {
     let mut listener = spawn_listener("tui-stopped-project");
     let port = format!(":{}", listener.port);
