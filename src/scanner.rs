@@ -18,10 +18,6 @@ use crate::project::{Project, ProjectResolver};
 
 /// Ports réservés au système : masqués sauf avec `--all`.
 const SYSTEM_PORT_LIMIT: u16 = 1024;
-/// Hook debug utilisé par le test d'intégration, qui ne peut pas toujours
-/// ouvrir un vrai port privilégié sur les runners CI.
-#[cfg(debug_assertions)]
-const TEST_SYSTEM_PORT_ENV: &str = "LEMONPORT_TEST_SYSTEM_PORT";
 
 /// Un port TCP en écoute, enrichi avec les informations du processus.
 #[derive(Debug, Clone, Serialize)]
@@ -89,13 +85,6 @@ impl Scanner {
         );
         let processes = self.snapshot_processes();
 
-        #[cfg(debug_assertions)]
-        let test_system_port = std::env::var(TEST_SYSTEM_PORT_ENV)
-            .ok()
-            .and_then(|value| value.parse::<u16>().ok());
-        #[cfg(not(debug_assertions))]
-        let test_system_port: Option<u16> = None;
-
         let sockets = get_sockets_info(
             AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6,
             ProtocolFlags::TCP,
@@ -156,7 +145,7 @@ impl Scanner {
                         project,
                         memory_mb: info.map(|info| round_mb(info.memory_bytes)).unwrap_or(0.0),
                         uptime_seconds: info.map(|info| info.uptime_seconds).unwrap_or(0),
-                        system: is_system_port(tcp.local_port, test_system_port),
+                        system: is_system_port(tcp.local_port),
                         protected,
                     },
                 );
@@ -209,8 +198,8 @@ impl Scanner {
     }
 }
 
-fn is_system_port(port: u16, test_override: Option<u16>) -> bool {
-    port < SYSTEM_PORT_LIMIT || test_override == Some(port)
+fn is_system_port(port: u16) -> bool {
+    port < SYSTEM_PORT_LIMIT
 }
 
 fn is_unspecified(address: &str) -> bool {
@@ -231,16 +220,9 @@ mod tests {
 
     #[test]
     fn ports_below_1024_are_system_ports() {
-        assert!(is_system_port(1, None));
-        assert!(is_system_port(SYSTEM_PORT_LIMIT - 1, None));
-        assert!(!is_system_port(SYSTEM_PORT_LIMIT, None));
-        assert!(!is_system_port(3000, None));
-    }
-
-    #[test]
-    fn test_override_marks_only_the_selected_port() {
-        assert!(is_system_port(3000, Some(3000)));
-        assert!(!is_system_port(3001, Some(3000)));
-        assert!(is_system_port(80, Some(3000)));
+        assert!(is_system_port(1));
+        assert!(is_system_port(SYSTEM_PORT_LIMIT - 1));
+        assert!(!is_system_port(SYSTEM_PORT_LIMIT));
+        assert!(!is_system_port(3000));
     }
 }

@@ -88,41 +88,20 @@ fn scan_and_json_detect_listener_and_project() {
     assert!(entry["uptime_seconds"].as_u64().is_some());
 }
 
-// Le hook de classification n'existe que dans les builds debug.
-#[cfg(debug_assertions)]
+// Ce test ouvre le vrai port 1023 : il tourne dans un conteneur CI root.
+#[cfg(unix)]
 #[test]
 fn system_ports_are_hidden_without_all_and_present_with_all() {
-    // Les runners non privilégiés ne peuvent pas ouvrir 1023. On essaie un vrai
-    // port bas, puis on marque un port éphémère comme système via le hook debug.
-    // La limite réelle 1023/1024 est couverte unitairement dans scanner.rs.
-    let (_listener, port, override_port) = match std::net::TcpListener::bind(("127.0.0.1", 1023)) {
-        Ok(listener) => {
-            let port = listener
-                .local_addr()
-                .expect("adresse du listener bas")
-                .port();
-            (listener, port, None)
-        }
-        Err(_) => {
-            let listener =
-                std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind d'un port éphémère");
-            let port = listener.local_addr().expect("adresse du listener").port();
-            (listener, port, Some(port))
-        }
-    };
-    assert_eq!(
-        override_port.is_some(),
-        port >= 1024,
-        "le port doit être réellement privilégié ou explicitement marqué comme système"
-    );
+    if !is_root() {
+        eprintln!("test ignoré : le port 1023 nécessite root (conteneur CI dédié)");
+        return;
+    }
 
-    let override_text = override_port.map(|port| port.to_string());
-    let variables: Vec<(&str, &str)> = override_text
-        .as_deref()
-        .map(|value| vec![("LEMONPORT_TEST_SYSTEM_PORT", value)])
-        .unwrap_or_default();
+    let _listener = std::net::TcpListener::bind(("127.0.0.1", 1023))
+        .expect("bind du port privilégié 1023 (root requis)");
+    let port = 1023_u16;
 
-    let hidden = run_cli_with_env(&["--json"], &variables);
+    let hidden = run_cli(&["--json"]);
     assert_success(&hidden);
     let ports: Vec<Value> = serde_json::from_slice(&hidden.stdout).expect("JSON valide");
     assert!(
@@ -132,7 +111,7 @@ fn system_ports_are_hidden_without_all_and_present_with_all() {
         "le port système doit être masqué sans --all"
     );
 
-    let all = run_cli_with_env(&["--json", "--all"], &variables);
+    let all = run_cli(&["--json", "--all"]);
     assert_success(&all);
     let ports: Vec<Value> = serde_json::from_slice(&all.stdout).expect("JSON valide");
     let entry = ports
@@ -481,14 +460,15 @@ fn tui_escape_clears_filter() {
     );
 }
 
-#[cfg(debug_assertions)]
+#[cfg(unix)]
 #[test]
 fn tui_header_shows_hidden_system_port_count() {
-    let port = free_port();
-    let port_text = port.to_string();
-    let mut tui =
-        TuiSession::spawn_with_args_env(&[], &[("LEMONPORT_TEST_SYSTEM_PORT", &port_text)]);
+    if !is_root() {
+        eprintln!("test ignoré : le port 1023 nécessite root (conteneur CI dédié)");
+        return;
+    }
 
+    let mut tui = TuiSession::spawn_with_args_env(&[], &[]);
     assert!(
         tui.wait_for(
             |screen| screen.contains("LemonPort"),
@@ -501,15 +481,14 @@ fn tui_header_shows_hidden_system_port_count() {
     let baseline = hidden_system_count(&tui.screen()).unwrap_or(0);
     let expected = baseline + 1;
 
-    // Ce listener reste dans le processus de test : le hook le classe comme
-    // système, donc il doit uniquement incrémenter le compteur masqué.
-    let _hidden =
-        std::net::TcpListener::bind(("127.0.0.1", port)).expect("bind du listener système simulé");
+    // Le listener reste dans le processus de test : il doit uniquement
+    // incrémenter le compteur masqué, sans apparaître dans le tableau.
+    let _hidden = std::net::TcpListener::bind(("127.0.0.1", 1023))
+        .expect("bind du port privilégié 1023 (root requis)");
 
     assert!(
         tui.wait_for(
-            |screen| hidden_system_count(screen) == Some(expected)
-                && !screen.contains(&format!(":{port}")),
+            |screen| hidden_system_count(screen) == Some(expected) && !screen.contains(":1023"),
             Duration::from_secs(10)
         ),
         "l'en-tête doit afficher {expected} port(s) système masqué(s):\n{}",
@@ -528,23 +507,17 @@ fn tui_header_shows_hidden_system_port_count() {
     );
 }
 
-#[cfg(debug_assertions)]
+#[cfg(unix)]
 fn hidden_system_count(screen: &str) -> Option<usize> {
     let marker = " système masqué";
     let index = screen.find(marker)?;
     screen[..index].split_whitespace().last()?.parse().ok()
 }
 
-#[cfg(debug_assertions)]
-fn free_port() -> u16 {
-    loop {
-        let listener =
-            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind d'un port éphémère");
-        let port = listener.local_addr().expect("adresse locale").port();
-        if port >= 1024 {
-            return port;
-        }
-    }
+#[cfg(unix)]
+fn is_root() -> bool {
+    // SAFETY: geteuid n'a aucune précondition et ne modifie aucun état.
+    unsafe { libc::geteuid() == 0 }
 }
 
 #[test]

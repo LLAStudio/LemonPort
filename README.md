@@ -312,7 +312,8 @@ cargo test --test integration -- --test-threads=1
 ```
 
 Un test vérifie aussi que les ports système (< 1024) sont masqués par défaut et
-réapparaissent avec `--all`.
+réapparaissent avec `--all`. Il ouvre le vrai port `1023` : il est ignoré hors root et la CI
+l'exécute dans un conteneur Linux root dédié.
 
 Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est bien tué par
 `SIGKILL` après le délai de grâce de 1,5 s.
@@ -335,7 +336,8 @@ Un huitième test PTY vérifie les variantes majuscules `O`, `C` et `R`.
 Un neuvième test PTY vérifie que `Ctrl+C` quitte la TUI.
 Un dixième test PTY vérifie qu'Échap annule le filtre et restaure la liste complète.
 Un onzième test PTY vérifie que l'en-tête affiche le nombre de ports système masqués et
-l'incrémente quand un nouveau port système apparaît.
+l'incrémente quand un nouveau port système apparaît. Comme il ouvre aussi le port `1023`,
+il s'exécute dans le même conteneur root.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :
@@ -348,7 +350,8 @@ La CI publie également un rapport HTML de couverture généré par `cargo llvm-
 l'artefact `coverage-report`.
 
 Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
-relancé en mode helper. La CI GitHub exécute ces suites sur Linux, macOS et Windows.
+relancé en mode helper. La CI GitHub exécute ces suites sur Linux, macOS et Windows, plus
+un job Linux en conteneur root pour les tests qui ouvrent le port privilégié `1023`.
 
 ## Construire les binaires de release
 
