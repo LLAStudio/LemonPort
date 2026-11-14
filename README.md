@@ -331,6 +331,7 @@ Un sixième test PTY vérifie que plusieurs listeners créés entre deux scans a
 ensemble lors du rafraîchissement suivant.
 Un septième test PTY vérifie les toasts d'erreur de `O` et `C` lorsque les actions
 externes échouent.
+Un huitième test PTY vérifie les variantes majuscules `O`, `C` et `R`.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

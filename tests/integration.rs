@@ -549,6 +549,62 @@ fn tui_shortcuts_and_keyboard_navigation() {
 
 #[cfg(debug_assertions)]
 #[test]
+fn tui_uppercase_shortcuts() {
+    let listener = spawn_listener("tui-uppercase-shortcuts");
+    let port = format!(":{}", listener.port);
+    let mut tui = TuiSession::spawn();
+
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&port) && screen.contains("tui-uppercase-shortcuts"),
+            Duration::from_secs(10)
+        ),
+        "le listener doit être visible:\n{}",
+        tui.screen()
+    );
+
+    let selected = selected_port(&tui.screen()).expect("un port doit être sélectionné");
+    let url = format!("http://localhost:{selected}");
+
+    tui.send(b"R");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Ports rafraîchis"),
+            Duration::from_secs(3)
+        ),
+        "R majuscule doit rafraîchir les ports:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"O");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Ouverture de") && screen.contains(&url),
+            Duration::from_secs(3)
+        ),
+        "O majuscule doit ouvrir le port sélectionné:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"C");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("URL copiée") && screen.contains(&url),
+            Duration::from_secs(3)
+        ),
+        "C majuscule doit copier l'URL du port sélectionné:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[cfg(debug_assertions)]
+#[test]
 fn tui_shortcuts_report_external_action_failures() {
     let listener = spawn_listener("tui-external-failure");
     let port = format!(":{}", listener.port);
