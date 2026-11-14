@@ -324,6 +324,7 @@ Un second test PTY vérifie qu'un listener créé après le démarrage apparaît
 rafraîchissement automatique de 2 s.
 Un troisième test PTY couvre la navigation `↑`/`↓` et `j`/`k`, ainsi que les raccourcis
 `O` (ouvrir), `C` (copier) et `R` (rafraîchir).
+Un quatrième test PTY vérifie qu'un listener arrêté disparaît de la TUI via l'auto-refresh.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

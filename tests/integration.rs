@@ -308,6 +308,43 @@ fn tui_auto_refresh_detects_new_listener() {
     );
 }
 
+#[test]
+fn tui_auto_refresh_removes_stopped_listener() {
+    let mut listener = spawn_listener("tui-stopped-project");
+    let port = format!(":{}", listener.port);
+    let mut tui = TuiSession::spawn();
+
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&port) && screen.contains("tui-stopped-project"),
+            Duration::from_secs(10)
+        ),
+        "le listener initial doit être visible:\n{}",
+        tui.screen()
+    );
+
+    listener.child.kill().expect("arrêt du listener");
+    listener
+        .child
+        .wait()
+        .expect("attente de l'arrêt du listener");
+
+    assert!(
+        tui.wait_for(
+            |screen| !screen.contains(&port) && !screen.contains("tui-stopped-project"),
+            Duration::from_secs(10)
+        ),
+        "le listener arrêté est toujours affiché après l'auto-refresh:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
 #[cfg(debug_assertions)]
 #[test]
 fn tui_shortcuts_and_keyboard_navigation() {
