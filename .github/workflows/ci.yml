@@ -34,6 +34,10 @@ jobs:
       - name: Integration tests
         run: cargo test --locked --test integration -- --test-threads=1
 
+      - name: Check English UI strings
+        if: runner.os == 'Linux'
+        run: python3 scripts/check_english.py
+
   system-ports:
     name: System ports (root)
     runs-on: ubuntu-latest
