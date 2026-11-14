@@ -327,6 +327,8 @@ Un troisième test PTY couvre la navigation `↑`/`↓` et `j`/`k`, ainsi que le
 Un quatrième test PTY vérifie qu'un listener arrêté disparaît de la TUI via l'auto-refresh.
 Un cinquième test PTY vérifie que l'auto-refresh respecte le filtre actif : un nouveau
 listener correspondant apparaît, un listener hors filtre reste masqué.
+Un sixième test PTY vérifie que plusieurs listeners créés entre deux scans apparaissent
+ensemble lors du rafraîchissement suivant.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

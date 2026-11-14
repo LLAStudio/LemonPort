@@ -309,6 +309,52 @@ fn tui_auto_refresh_detects_new_listener() {
 }
 
 #[test]
+fn tui_auto_refresh_adds_multiple_listeners() {
+    let mut tui = TuiSession::spawn();
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort"),
+            Duration::from_secs(10)
+        ),
+        "écran initial incomplet:\n{}",
+        tui.screen()
+    );
+
+    let names = ["tui-batch-one", "tui-batch-two", "tui-batch-three"];
+    let initial = tui.screen();
+    for name in names {
+        assert!(
+            !initial.contains(name),
+            "le projet {name} ne doit pas exister avant sa création:\n{initial}"
+        );
+    }
+
+    let listeners: Vec<Listener> = names.iter().map(|name| spawn_listener(name)).collect();
+    let ports: Vec<String> = listeners
+        .iter()
+        .map(|listener| format!(":{}", listener.port))
+        .collect();
+
+    assert!(
+        tui.wait_for(
+            |screen| {
+                names.iter().all(|name| screen.contains(*name))
+                    && ports.iter().all(|port| screen.contains(port.as_str()))
+            },
+            Duration::from_secs(10)
+        ),
+        "les trois nouveaux listeners doivent apparaître ensemble:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[test]
 fn tui_auto_refresh_respects_active_filter() {
     let hidden = spawn_listener("tui-filter-drop");
     let hidden_port = format!(":{}", hidden.port);
