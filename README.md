@@ -302,6 +302,18 @@ Tableau d'objets, trié ports de développement d'abord :
 Avec `--all`, les ports système sont inclus. Sans processus identifiable, `pid` vaut `null`,
 `protected` vaut `true`, et `project` est absent.
 
+## Tests
+
+La suite d'intégration lance un vrai processus listener, puis vérifie le scan, l'enrichissement
+JSON (PID, projet, framework, RAM, uptime) et la libération du port par le mode one-shot :
+
+```bash
+cargo test --test integration -- --test-threads=1
+```
+
+Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
+relancé en mode helper. La CI GitHub exécute ces tests sur Linux, macOS et Windows.
+
 ## Construire les binaires de release
 
 ### En local
