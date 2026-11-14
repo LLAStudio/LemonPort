@@ -65,11 +65,16 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
-        run: cargo llvm-cov --locked --all-targets --html --output-dir coverage -- --test-threads=1
+        run: |
+          cargo llvm-cov --locked --all-targets --no-report -- --test-threads=1
+          cargo llvm-cov report --html --output-dir coverage
+          cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
       - name: Upload report
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
-          path: coverage/html/
+          path: |
+            coverage/html/
+            coverage/lcov.info
           if-no-files-found: error
