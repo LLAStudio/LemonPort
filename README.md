@@ -329,6 +329,8 @@ Un cinquième test PTY vérifie que l'auto-refresh respecte le filtre actif : un
 listener correspondant apparaît, un listener hors filtre reste masqué.
 Un sixième test PTY vérifie que plusieurs listeners créés entre deux scans apparaissent
 ensemble lors du rafraîchissement suivant.
+Un septième test PTY vérifie les toasts d'erreur de `O` et `C` lorsque les actions
+externes échouent.
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :

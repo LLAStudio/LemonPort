@@ -287,6 +287,13 @@ impl App {
             return;
         };
         let url = format!("http://localhost:{port}");
+        if let Some(error) = external_action_error() {
+            self.set_toast(
+                format!("Impossible d'ouvrir le navigateur : {error}"),
+                ToastKind::Error,
+            );
+            return;
+        }
         if external_actions_disabled() {
             self.set_toast(format!("Ouverture de {url}"), ToastKind::Success);
             return;
@@ -306,6 +313,10 @@ impl App {
             return;
         };
         let url = format!("http://localhost:{port}");
+        if let Some(error) = external_action_error() {
+            self.set_toast(format!("Presse-papier : {error}"), ToastKind::Error);
+            return;
+        }
         if external_actions_disabled() {
             self.set_toast(format!("URL copiée : {url}"), ToastKind::Success);
             return;
@@ -371,6 +382,16 @@ fn external_actions_disabled() -> bool {
     {
         false
     }
+}
+
+#[cfg(debug_assertions)]
+fn external_action_error() -> Option<&'static str> {
+    std::env::var_os("LEMONPORT_TEST_FAIL_EXTERNAL").map(|_| "échec simulé")
+}
+
+#[cfg(not(debug_assertions))]
+fn external_action_error() -> Option<&'static str> {
+    None
 }
 
 fn matches_filter(entry: &PortEntry, tokens: &[String]) -> bool {

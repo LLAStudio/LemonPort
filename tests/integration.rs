@@ -548,6 +548,46 @@ fn tui_shortcuts_and_keyboard_navigation() {
 }
 
 #[cfg(debug_assertions)]
+#[test]
+fn tui_shortcuts_report_external_action_failures() {
+    let listener = spawn_listener("tui-external-failure");
+    let port = format!(":{}", listener.port);
+    let mut tui = TuiSession::spawn_with_env(&[("LEMONPORT_TEST_FAIL_EXTERNAL", "1")]);
+
+    assert!(
+        tui.wait_for(|screen| screen.contains(&port), Duration::from_secs(10)),
+        "le listener doit être visible:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"o");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Impossible d'ouvrir le navigateur"),
+            Duration::from_secs(3)
+        ),
+        "O doit afficher l'erreur d'ouverture:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"c");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Presse-papier :"),
+            Duration::from_secs(3)
+        ),
+        "C doit afficher l'erreur de presse-papier:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[cfg(debug_assertions)]
 fn selected_port(screen: &str) -> Option<u16> {
     let marker = "▸ :";
     let start = screen.find(marker)? + marker.len();
@@ -569,6 +609,10 @@ struct TuiSession {
 
 impl TuiSession {
     fn spawn() -> Self {
+        Self::spawn_with_env(&[])
+    }
+
+    fn spawn_with_env(extra_env: &[(&str, &str)]) -> Self {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -583,6 +627,9 @@ impl TuiSession {
         command.arg("--all");
         command.env("TERM", "xterm-256color");
         command.env("LEMONPORT_TEST_DISABLE_EXTERNAL", "1");
+        for (key, value) in extra_env {
+            command.env(key, value);
+        }
         let child = pair
             .slave
             .spawn_command(command)
