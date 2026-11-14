@@ -145,6 +145,8 @@ fn find_framework<'a>(dependencies: &[&str], candidates: &[(&str, &'a str)]) -> 
 
 fn from_package_json(dir: &Path, text: &str) -> Option<Project> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    // Un package.json valide est toujours un objet JSON.
+    let value = value.as_object()?;
     let name = clean_name(value.get("name").and_then(serde_json::Value::as_str), dir);
 
     let mut dependencies: Vec<&str> = Vec::new();
@@ -256,18 +258,16 @@ fn from_go_mod(dir: &Path, text: &str) -> Option<Project> {
     let module = text.lines().find_map(|line| {
         let mut parts = line.split_whitespace();
         match (parts.next(), parts.next()) {
-            (Some("module"), Some(path)) => Some(path.trim_matches('"').to_string()),
+            (Some("module"), Some(path)) => {
+                let path = path.trim_matches('"');
+                (!path.is_empty()).then(|| path.to_string())
+            }
             _ => None,
         }
-    });
+    })?;
 
-    let name = module
-        .as_deref()
-        .and_then(|path| path.rsplit('/').next())
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| fallback_name(dir));
+    // Un go.mod sans directive `module` n'est pas un manifeste valide.
+    let name = clean_name(module.rsplit('/').next(), dir);
 
     const CANDIDATES: [(&str, &str); 6] = [
         ("gin-gonic/gin", "Gin"),
@@ -287,6 +287,7 @@ fn from_go_mod(dir: &Path, text: &str) -> Option<Project> {
 
 fn from_composer(dir: &Path, text: &str) -> Option<Project> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let value = value.as_object()?;
     let raw_name = value
         .get("name")
         .and_then(serde_json::Value::as_str)
@@ -309,4 +310,225 @@ fn from_composer(dir: &Path, text: &str) -> Option<Project> {
         "PHP",
         find_framework(&dependencies, &CANDIDATES),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detect, detect_in_dir, Project};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Dossier temporaire isolé, supprimé même si une assertion échoue.
+    struct TempProject {
+        root: PathBuf,
+    }
+
+    impl TempProject {
+        fn new() -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "lemon-port-project-test-{}-{id}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&root);
+            fs::create_dir_all(&root).expect("création du dossier de test");
+            Self { root }
+        }
+
+        fn path(&self) -> &Path {
+            &self.root
+        }
+
+        fn write(&self, manifest: &str, contents: &str) {
+            fs::write(self.root.join(manifest), contents).expect("écriture du manifeste");
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn assert_project(
+        project: &Project,
+        dir: &Path,
+        name: &str,
+        kind: &str,
+        framework: Option<&str>,
+    ) {
+        assert_eq!(project.name.as_str(), name);
+        assert_eq!(project.kind.as_str(), kind);
+        assert_eq!(project.framework.as_deref(), framework);
+        assert_eq!(Path::new(&project.root), dir);
+    }
+
+    #[test]
+    fn detects_package_json_manifest() {
+        let project = TempProject::new();
+        project.write(
+            "package.json",
+            r#"{
+  "name": "web-app",
+  "dependencies": { "next": "15.0.0" }
+}"#,
+        );
+
+        let detected = detect_in_dir(project.path()).expect("package.json valide détecté");
+        assert_project(
+            &detected,
+            project.path(),
+            "web-app",
+            "Node.js",
+            Some("Next.js"),
+        );
+    }
+
+    #[test]
+    fn detects_cargo_toml_manifest() {
+        let project = TempProject::new();
+        project.write(
+            "Cargo.toml",
+            r#"[package]
+name = "rust-api"
+
+[dependencies]
+axum = "0.8"
+"#,
+        );
+
+        let detected = detect_in_dir(project.path()).expect("Cargo.toml valide détecté");
+        assert_project(&detected, project.path(), "rust-api", "Rust", Some("Axum"));
+    }
+
+    #[test]
+    fn detects_pyproject_manifest() {
+        let project = TempProject::new();
+        project.write(
+            "pyproject.toml",
+            r#"[project]
+name = "py-service"
+dependencies = ["fastapi>=0.115", "uvicorn>=0.32"]
+"#,
+        );
+
+        let detected = detect_in_dir(project.path()).expect("pyproject.toml valide détecté");
+        assert_project(
+            &detected,
+            project.path(),
+            "py-service",
+            "Python",
+            Some("FastAPI"),
+        );
+    }
+
+    #[test]
+    fn detects_go_mod_manifest() {
+        let project = TempProject::new();
+        project.write(
+            "go.mod",
+            r#"module example.com/acme/port-service
+
+go 1.23
+
+require github.com/gin-gonic/gin v1.10.0
+"#,
+        );
+
+        let detected = detect_in_dir(project.path()).expect("go.mod valide détecté");
+        assert_project(&detected, project.path(), "port-service", "Go", Some("Gin"));
+    }
+
+    #[test]
+    fn detects_composer_manifest() {
+        let project = TempProject::new();
+        project.write(
+            "composer.json",
+            r#"{
+  "name": "acme/storefront",
+  "require": { "laravel/framework": "^11.0" }
+}"#,
+        );
+
+        let detected = detect_in_dir(project.path()).expect("composer.json valide détecté");
+        assert_project(
+            &detected,
+            project.path(),
+            "storefront",
+            "PHP",
+            Some("Laravel"),
+        );
+    }
+
+    #[test]
+    fn ignores_malformed_json_and_toml_manifests() {
+        let cases = [
+            ("package.json", "{ \"name\": \"broken\","),
+            ("Cargo.toml", "[package\nname = \"broken\""),
+            ("pyproject.toml", "[project\nname = \"broken\""),
+            ("composer.json", "{ \"name\": \"broken\","),
+        ];
+
+        for (manifest, contents) in cases {
+            let project = TempProject::new();
+            project.write(manifest, contents);
+            assert!(
+                detect_in_dir(project.path()).is_none(),
+                "{manifest} malformé ne doit pas être retenu"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_json_manifests_with_non_object_root() {
+        for manifest in ["package.json", "composer.json"] {
+            let project = TempProject::new();
+            project.write(manifest, "[]");
+            assert!(
+                detect_in_dir(project.path()).is_none(),
+                "{manifest} doit être un objet JSON"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_go_mod_without_module_directive() {
+        let project = TempProject::new();
+        project.write(
+            "go.mod",
+            "go 1.23\n\nrequire example.com/dependency v1.0.0\n",
+        );
+        assert!(
+            detect_in_dir(project.path()).is_none(),
+            "un go.mod sans directive module est invalide"
+        );
+    }
+
+    #[test]
+    fn malformed_manifest_falls_back_to_next_candidate() {
+        let project = TempProject::new();
+        project.write("package.json", "{ broken");
+        project.write("Cargo.toml", "[package]\nname = \"fallback-app\"\n");
+
+        let detected = detect_in_dir(project.path()).expect("Cargo.toml doit prendre le relais");
+        assert_project(&detected, project.path(), "fallback-app", "Rust", None);
+    }
+
+    #[test]
+    fn detects_manifest_in_parent_directory() {
+        let project = TempProject::new();
+        project.write("package.json", r#"{"name": "nested-app"}"#);
+        let cwd = project
+            .path()
+            .join("src")
+            .join("features")
+            .join("components");
+        fs::create_dir_all(&cwd).expect("création des dossiers imbriqués");
+
+        let detected = detect(&cwd).expect("manifeste du parent détecté");
+        assert_eq!(detected.name.as_str(), "nested-app");
+        assert_eq!(Path::new(&detected.root), project.path());
+    }
 }

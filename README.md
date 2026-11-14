@@ -318,8 +318,15 @@ Un test TUI lance LemonPort dans un **vrai pseudo-terminal** (`portable-pty`), i
 l'écran avec `vt100`, filtre sur un projet puis appuie sur `Entrée` pour tuer la ligne
 sélectionnée. Il vérifie le toast de libération et que le second listener reste vivant.
 
+Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
+`pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :
+
+```bash
+cargo test --lib
+```
+
 Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
-relancé en mode helper. La CI GitHub exécute ces tests sur Linux, macOS et Windows.
+relancé en mode helper. La CI GitHub exécute ces suites sur Linux, macOS et Windows.
 
 ## Construire les binaires de release
 

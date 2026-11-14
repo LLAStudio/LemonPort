@@ -28,5 +28,8 @@ jobs:
       - name: Installer Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Tests unitaires
+        run: cargo test --locked --lib
+
       - name: Tests d'intégration
         run: cargo test --locked --test integration -- --test-threads=1
