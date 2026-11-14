@@ -311,6 +311,9 @@ JSON (PID, projet, framework, RAM, uptime) et la libération du port par le mode
 cargo test --test integration -- --test-threads=1
 ```
 
+Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est bien tué par
+`SIGKILL` après le délai de grâce de 1,5 s.
+
 Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
 relancé en mode helper. La CI GitHub exécute ces tests sur Linux, macOS et Windows.
 

@@ -773,6 +773,7 @@ dependencies = [
  "anyhow",
  "clap",
  "crossterm",
+ "libc",
  "netstat2",
  "open",
  "ratatui",

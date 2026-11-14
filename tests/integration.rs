@@ -3,7 +3,8 @@
 //! Chaque test lance un vrai processus qui écoute sur un port TCP, puis pilote
 //! le binaire `lemon-port` comme un utilisateur le ferait :
 //! - `--json` doit retrouver le port, le PID, le projet et les métriques ;
-//! - le mode one-shot doit tuer le processus et libérer le port.
+//! - le mode one-shot doit tuer le processus et libérer le port ;
+//! - un processus qui ignore SIGTERM doit finir par SIGKILL (Unix).
 //!
 //! Le processus listener est le binaire de test lui-même, relancé avec le
 //! filtre `helper_listener` : aucun interpréteur externe (Python, Node…)
@@ -29,6 +30,18 @@ fn helper_listener() {
     let Some(port_file) = std::env::var_os(PORT_FILE_ENV) else {
         return;
     };
+
+    // Sur Unix, ce listener peut volontairement ignorer SIGTERM pour tester
+    // l'escalade vers SIGKILL. Le handler est armé avant le bind : dès que le
+    // port est publié, il est déjà ignoré.
+    #[cfg(unix)]
+    if std::env::var_os("LEMONPORT_TEST_IGNORE_SIGTERM").is_some() {
+        // SAFETY: SIG_IGN est un gestionnaire valide, permanent, et le handler
+        // ne touche à aucun état Rust.
+        unsafe {
+            libc::signal(libc::SIGTERM, libc::SIG_IGN);
+        }
+    }
 
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind du listener");
     let port = listener
@@ -106,6 +119,48 @@ fn one_shot_kills_listener_and_frees_port() {
     );
 }
 
+/// Vérifie la séquence propre : SIGTERM ignoré, délai de grâce, puis SIGKILL.
+#[cfg(unix)]
+#[test]
+fn one_shot_escalates_to_sigkill_for_stubborn_process() {
+    let mut listener = spawn_listener_with("LemonPortStubbornProject", true);
+    let port = listener.port;
+    let port_argument = port.to_string();
+
+    let started = Instant::now();
+    let output = run_cli(&[port_argument.as_str()]);
+    let elapsed = started.elapsed();
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("(SIGKILL)"),
+        "SIGKILL attendu après le délai de grâce, stdout: {stdout}"
+    );
+    assert!(
+        elapsed >= Duration::from_millis(1400),
+        "SIGKILL envoyé trop tôt ({elapsed:?}) : SIGTERM n'a pas été ignoré"
+    );
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "escalade anormalement lente : {elapsed:?}"
+    );
+    assert!(
+        wait_for_exit(&mut listener.child, Duration::from_secs(5)),
+        "le processus qui ignore SIGTERM est toujours vivant"
+    );
+
+    let output = run_cli(&["--json", "--all"]);
+    assert_success(&output);
+    let ports: Vec<Value> = serde_json::from_slice(&output.stdout).expect("JSON valide");
+    assert!(
+        !ports
+            .iter()
+            .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
+        "le port :{port} est encore en écoute après SIGKILL"
+    );
+}
+
 /// Processus listener jetable, avec nettoyage garanti.
 struct Listener {
     child: Child,
@@ -123,6 +178,10 @@ impl Drop for Listener {
 }
 
 fn spawn_listener(project_name: &str) -> Listener {
+    spawn_listener_with(project_name, false)
+}
+
+fn spawn_listener_with(project_name: &str, ignore_sigterm: bool) -> Listener {
     let project = TempDir::new("listener");
     let manifest = format!(
         r#"{{"name":"{project_name}","dependencies":{{"next":"15.0.0","react":"19.0.0"}}}}"#
@@ -132,15 +191,23 @@ fn spawn_listener(project_name: &str) -> Listener {
     let port_file = project.path().join("port.txt");
     let executable = std::env::current_exe().expect("chemin du binaire de test");
 
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .args(["--exact", "helper_listener", "--nocapture"])
         .current_dir(project.path())
         .env(PORT_FILE_ENV, &port_file)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("lancement du listener de test");
+        .stderr(Stdio::null());
+
+    #[cfg(unix)]
+    if ignore_sigterm {
+        command.env("LEMONPORT_TEST_IGNORE_SIGTERM", "1");
+    }
+    #[cfg(not(unix))]
+    let _ = ignore_sigterm;
+
+    let mut child = command.spawn().expect("lancement du listener de test");
 
     let deadline = Instant::now() + Duration::from_secs(10);
     let port = loop {
