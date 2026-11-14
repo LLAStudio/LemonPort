@@ -65,10 +65,14 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
+        env:
+          MIN_LINE_COVERAGE: 80
         run: |
           cargo llvm-cov --locked --all-targets --no-report -- --test-threads=1
           cargo llvm-cov report --html --output-dir coverage
-          cargo llvm-cov report --lcov --output-path coverage/lcov.info
+          cargo llvm-cov report --lcov \
+            --output-path coverage/lcov.info \
+            --fail-under-lines "$MIN_LINE_COVERAGE"
 
       - name: Upload report
         uses: actions/upload-artifact@v7
