@@ -308,6 +308,113 @@ fn tui_auto_refresh_detects_new_listener() {
     );
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn tui_shortcuts_and_keyboard_navigation() {
+    let first = spawn_listener("tui-nav-first");
+    let second = spawn_listener("tui-nav-second");
+    let mut tui = TuiSession::spawn();
+
+    let first_port = format!(":{}", first.port);
+    let second_port = format!(":{}", second.port);
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&first_port) && screen.contains(&second_port),
+            Duration::from_secs(10)
+        ),
+        "les deux listeners doivent être visibles:\n{}",
+        tui.screen()
+    );
+
+    let initial_port = selected_port(&tui.screen()).expect("un port doit être sélectionné");
+
+    tui.send(b"j");
+    assert!(
+        tui.wait_for(
+            |screen| selected_port(screen) != Some(initial_port),
+            Duration::from_secs(3)
+        ),
+        "j doit déplacer la sélection vers le bas:\n{}",
+        tui.screen()
+    );
+    tui.send(b"k");
+    assert!(
+        tui.wait_for(
+            |screen| selected_port(screen) == Some(initial_port),
+            Duration::from_secs(3)
+        ),
+        "k doit remonter la sélection:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"\x1b[B");
+    assert!(
+        tui.wait_for(
+            |screen| selected_port(screen) != Some(initial_port),
+            Duration::from_secs(3)
+        ),
+        "↓ doit déplacer la sélection:\n{}",
+        tui.screen()
+    );
+    tui.send(b"\x1b[A");
+    assert!(
+        tui.wait_for(
+            |screen| selected_port(screen) == Some(initial_port),
+            Duration::from_secs(3)
+        ),
+        "↑ doit remonter la sélection:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"r");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Ports rafraîchis"),
+            Duration::from_secs(3)
+        ),
+        "R doit afficher le toast de rafraîchissement:\n{}",
+        tui.screen()
+    );
+
+    let url = format!("http://localhost:{initial_port}");
+    tui.send(b"o");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("Ouverture de") && screen.contains(&url),
+            Duration::from_secs(3)
+        ),
+        "O doit ouvrir le port sélectionné:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"c");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("URL copiée") && screen.contains(&url),
+            Duration::from_secs(3)
+        ),
+        "C doit copier l'URL du port sélectionné:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[cfg(debug_assertions)]
+fn selected_port(screen: &str) -> Option<u16> {
+    let marker = "▸ :";
+    let start = screen.find(marker)? + marker.len();
+    let digits: String = screen[start..]
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
+}
+
 /// TUI lancée dans un vrai pseudo-terminal, avec écran vt100.
 struct TuiSession {
     child: Box<dyn PtyChild + Send>,
@@ -332,6 +439,7 @@ impl TuiSession {
         let mut command = CommandBuilder::new(BIN);
         command.arg("--all");
         command.env("TERM", "xterm-256color");
+        command.env("LEMONPORT_TEST_DISABLE_EXTERNAL", "1");
         let child = pair
             .slave
             .spawn_command(command)

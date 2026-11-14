@@ -287,6 +287,10 @@ impl App {
             return;
         };
         let url = format!("http://localhost:{port}");
+        if external_actions_disabled() {
+            self.set_toast(format!("Ouverture de {url}"), ToastKind::Success);
+            return;
+        }
         match open::that(&url) {
             Ok(()) => self.set_toast(format!("Ouverture de {url}"), ToastKind::Success),
             Err(error) => self.set_toast(
@@ -302,6 +306,10 @@ impl App {
             return;
         };
         let url = format!("http://localhost:{port}");
+        if external_actions_disabled() {
+            self.set_toast(format!("URL copiée : {url}"), ToastKind::Success);
+            return;
+        }
         match copy_to_clipboard(&url) {
             Ok(()) => self.set_toast(format!("URL copiée : {url}"), ToastKind::Success),
             Err(error) => self.set_toast(format!("Presse-papier : {error}"), ToastKind::Error),
@@ -349,6 +357,19 @@ impl App {
             kind,
             created: Instant::now(),
         });
+    }
+}
+
+/// Court-circuite les actions externes dans les tests PTY, qui doivent rester
+/// hermétiques (pas de navigateur ni de presse-papier sur les runners CI).
+fn external_actions_disabled() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var_os("LEMONPORT_TEST_DISABLE_EXTERNAL").is_some()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
     }
 }
 

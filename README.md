@@ -322,6 +322,8 @@ l'écran avec `vt100`, filtre sur un projet puis appuie sur `Entrée` pour tuer 
 sélectionnée. Il vérifie le toast de libération et que le second listener reste vivant.
 Un second test PTY vérifie qu'un listener créé après le démarrage apparaît grâce au
 rafraîchissement automatique de 2 s.
+Un troisième test PTY couvre la navigation `↑`/`↓` et `j`/`k`, ainsi que les raccourcis
+`O` (ouvrir), `C` (copier) et `R` (rafraîchir).
 
 Les tests unitaires couvrent la détection des cinq manifestes (`package.json`, `Cargo.toml`,
 `pyproject.toml`, `go.mod`, `composer.json`), y compris les fichiers malformés :
