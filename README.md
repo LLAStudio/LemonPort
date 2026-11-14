@@ -314,6 +314,10 @@ cargo test --test integration -- --test-threads=1
 Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est bien tué par
 `SIGKILL` après le délai de grâce de 1,5 s.
 
+Un test TUI lance LemonPort dans un **vrai pseudo-terminal** (`portable-pty`), interprète
+l'écran avec `vt100`, filtre sur un projet puis appuie sur `Entrée` pour tuer la ligne
+sélectionnée. Il vérifie le toast de libération et que le second listener reste vivant.
+
 Aucun interpréteur externe n'est requis : le listener est le binaire de test lui-même,
 relancé en mode helper. La CI GitHub exécute ces tests sur Linux, macOS et Windows.
 

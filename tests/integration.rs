@@ -11,12 +11,16 @@
 //! n'est requis, et le test reste cross-platform.
 
 use std::fs;
+use std::io::{Read, Write};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::process::{self, Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use portable_pty::{native_pty_system, Child as PtyChild, CommandBuilder, MasterPty, PtySize};
 use serde_json::Value;
 
 /// Chemin du binaire compilé, fourni par Cargo aux tests d'intégration.
@@ -159,6 +163,177 @@ fn one_shot_escalates_to_sigkill_for_stubborn_process() {
             .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
         "le port :{port} est encore en écoute après SIGKILL"
     );
+}
+
+#[test]
+fn tui_filter_and_kill_shortcut() {
+    let mut first = spawn_listener("tui-project-a");
+    let mut second = spawn_listener("tui-project-b");
+    let mut tui = TuiSession::spawn();
+
+    let first_port = format!(":{}", first.port);
+    let second_port = format!(":{}", second.port);
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort")
+                && screen.contains(&first_port)
+                && screen.contains(&second_port),
+            Duration::from_secs(10)
+        ),
+        "écran initial incomplet:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"/tui-project-a");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("/tui-project-a") && !screen.contains("tui-project-b"),
+            Duration::from_secs(5)
+        ),
+        "le filtre n'a pas isolé le projet A:\n{}",
+        tui.screen()
+    );
+
+    // Entrée en mode recherche : tue la ligne sélectionnée (projet A filtré).
+    tui.send(b"\r");
+    assert!(
+        tui.wait_for(|screen| screen.contains("libéré"), Duration::from_secs(8)),
+        "aucun toast de libération:\n{}",
+        tui.screen()
+    );
+    assert!(
+        wait_for_exit(&mut first.child, Duration::from_secs(5)),
+        "le listener filtré n'a pas été tué"
+    );
+    assert!(
+        second.child.try_wait().ok().flatten().is_none(),
+        "le mauvais listener a été tué"
+    );
+
+    tui.send(b"q");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+/// TUI lancée dans un vrai pseudo-terminal, avec écran vt100.
+struct TuiSession {
+    child: Box<dyn PtyChild + Send>,
+    writer: Box<dyn Write + Send>,
+    _master: Box<dyn MasterPty + Send>,
+    output: Receiver<Vec<u8>>,
+    parser: vt100::Parser,
+}
+
+impl TuiSession {
+    fn spawn() -> Self {
+        let pty_system = native_pty_system();
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 32,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("ouverture du pseudo-terminal");
+
+        let mut command = CommandBuilder::new(BIN);
+        command.arg("--all");
+        command.env("TERM", "xterm-256color");
+        let child = pair
+            .slave
+            .spawn_command(command)
+            .expect("lancement de la TUI dans le pty");
+
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .expect("lecture du pseudo-terminal");
+        let writer = pair
+            .master
+            .take_writer()
+            .expect("écriture vers le pseudo-terminal");
+        drop(pair.slave);
+        let master = pair.master;
+
+        let (sender, output) = mpsc::channel();
+        thread::spawn(move || {
+            let mut buffer = [0u8; 8192];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => {
+                        if sender.send(buffer[..count].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        let rows = NonZeroU16::new(32).expect("32 lignes");
+        let cols = NonZeroU16::new(120).expect("120 colonnes");
+        Self {
+            child,
+            writer,
+            _master: master,
+            output,
+            parser: vt100::Parser::new(rows, cols, 0),
+        }
+    }
+
+    fn send(&mut self, bytes: &[u8]) {
+        self.writer.write_all(bytes).expect("écriture pty");
+        self.writer.flush().expect("flush pty");
+    }
+
+    fn pump(&mut self) {
+        while let Ok(chunk) = self.output.try_recv() {
+            self.parser.process(&chunk);
+        }
+    }
+
+    fn screen(&mut self) -> String {
+        self.pump();
+        self.parser.screen().contents()
+    }
+
+    fn wait_for(&mut self, predicate: impl Fn(&str) -> bool, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            self.pump();
+            if predicate(&self.parser.screen().contents()) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn wait_for_exit(&mut self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => return true,
+                Ok(None) => {}
+                Err(_) => return false,
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+impl Drop for TuiSession {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 /// Processus listener jetable, avec nettoyage garanti.
