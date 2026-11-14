@@ -88,6 +88,61 @@ fn scan_and_json_detect_listener_and_project() {
     assert!(entry["uptime_seconds"].as_u64().is_some());
 }
 
+// Le hook de classification n'existe que dans les builds debug.
+#[cfg(debug_assertions)]
+#[test]
+fn system_ports_are_hidden_without_all_and_present_with_all() {
+    // Les runners non privilégiés ne peuvent pas ouvrir 1023. On essaie un vrai
+    // port bas, puis on marque un port éphémère comme système via le hook debug.
+    // La limite réelle 1023/1024 est couverte unitairement dans scanner.rs.
+    let (_listener, port, override_port) = match std::net::TcpListener::bind(("127.0.0.1", 1023)) {
+        Ok(listener) => {
+            let port = listener
+                .local_addr()
+                .expect("adresse du listener bas")
+                .port();
+            (listener, port, None)
+        }
+        Err(_) => {
+            let listener =
+                std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind d'un port éphémère");
+            let port = listener.local_addr().expect("adresse du listener").port();
+            (listener, port, Some(port))
+        }
+    };
+    assert_eq!(
+        override_port.is_some(),
+        port >= 1024,
+        "le port doit être réellement privilégié ou explicitement marqué comme système"
+    );
+
+    let override_text = override_port.map(|port| port.to_string());
+    let variables: Vec<(&str, &str)> = override_text
+        .as_deref()
+        .map(|value| vec![("LEMONPORT_TEST_SYSTEM_PORT", value)])
+        .unwrap_or_default();
+
+    let hidden = run_cli_with_env(&["--json"], &variables);
+    assert_success(&hidden);
+    let ports: Vec<Value> = serde_json::from_slice(&hidden.stdout).expect("JSON valide");
+    assert!(
+        !ports
+            .iter()
+            .any(|entry| entry["port"].as_u64() == Some(u64::from(port))),
+        "le port système doit être masqué sans --all"
+    );
+
+    let all = run_cli_with_env(&["--json", "--all"], &variables);
+    assert_success(&all);
+    let ports: Vec<Value> = serde_json::from_slice(&all.stdout).expect("JSON valide");
+    let entry = ports
+        .iter()
+        .find(|entry| entry["port"].as_u64() == Some(u64::from(port)))
+        .expect("le port système doit apparaître avec --all");
+    assert_eq!(entry["system"].as_bool(), Some(true));
+    assert_eq!(entry["port"].as_u64(), Some(u64::from(port)));
+}
+
 #[test]
 fn one_shot_kills_listener_and_frees_port() {
     let mut listener = spawn_listener("LemonPortKillProject");
@@ -413,10 +468,16 @@ fn spawn_listener_with(project_name: &str, ignore_sigterm: bool) -> Listener {
 }
 
 fn run_cli(arguments: &[&str]) -> Output {
-    Command::new(BIN)
-        .args(arguments)
-        .output()
-        .expect("exécution de lemon-port")
+    run_cli_with_env(arguments, &[])
+}
+
+fn run_cli_with_env(arguments: &[&str], variables: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(BIN);
+    command.args(arguments);
+    for (key, value) in variables {
+        command.env(key, value);
+    }
+    command.output().expect("exécution de lemon-port")
 }
 
 fn assert_success(output: &Output) {

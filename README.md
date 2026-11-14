@@ -311,6 +311,9 @@ JSON (PID, projet, framework, RAM, uptime) et la libération du port par le mode
 cargo test --test integration -- --test-threads=1
 ```
 
+Un test vérifie aussi que les ports système (< 1024) sont masqués par défaut et
+réapparaissent avec `--all`.
+
 Un test Unix supplémentaire vérifie qu'un processus qui ignore `SIGTERM` est bien tué par
 `SIGKILL` après le délai de grâce de 1,5 s.
 
