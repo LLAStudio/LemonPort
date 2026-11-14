@@ -309,6 +309,66 @@ fn tui_auto_refresh_detects_new_listener() {
 }
 
 #[test]
+fn tui_auto_refresh_respects_active_filter() {
+    let hidden = spawn_listener("tui-filter-drop");
+    let hidden_port = format!(":{}", hidden.port);
+    let mut tui = TuiSession::spawn();
+
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort") && screen.contains(&hidden_port),
+            Duration::from_secs(10)
+        ),
+        "le listener hors filtre doit être visible avant le filtrage:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"/tui-filter-keep");
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("/tui-filter-keep"),
+            Duration::from_secs(3)
+        ),
+        "le filtre doit être actif:\n{}",
+        tui.screen()
+    );
+
+    let filtered = tui.screen();
+    assert!(
+        !filtered.contains(&hidden_port) && !filtered.contains("tui-filter-drop"),
+        "le listener hors filtre doit être masqué:\n{filtered}"
+    );
+
+    let kept = spawn_listener("tui-filter-keep");
+    let kept_port = format!(":{}", kept.port);
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains(&kept_port) && screen.contains("tui-filter-keep"),
+            Duration::from_secs(10)
+        ),
+        "le nouveau listener correspondant au filtre doit apparaître:\n{}",
+        tui.screen()
+    );
+
+    let screen = tui.screen();
+    assert!(
+        screen.contains("/tui-filter-keep"),
+        "le filtre doit rester actif après l'auto-refresh:\n{screen}"
+    );
+    assert!(
+        !screen.contains(&hidden_port) && !screen.contains("tui-filter-drop"),
+        "le listener hors filtre doit rester masqué après l'auto-refresh:\n{screen}"
+    );
+
+    // Ctrl+C quitte même lorsque la saisie du filtre est active.
+    tui.send(b"\x03");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "la TUI ne s'est pas arrêtée"
+    );
+}
+
+#[test]
 fn tui_auto_refresh_removes_stopped_listener() {
     let mut listener = spawn_listener("tui-stopped-project");
     let port = format!(":{}", listener.port);
