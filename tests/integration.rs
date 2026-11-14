@@ -415,6 +415,25 @@ fn tui_auto_refresh_respects_active_filter() {
 }
 
 #[test]
+fn tui_ctrl_c_quits() {
+    let mut tui = TuiSession::spawn();
+    assert!(
+        tui.wait_for(
+            |screen| screen.contains("LemonPort"),
+            Duration::from_secs(10)
+        ),
+        "écran initial incomplet:\n{}",
+        tui.screen()
+    );
+
+    tui.send(b"\x03");
+    assert!(
+        tui.wait_for_exit(Duration::from_secs(5)),
+        "Ctrl+C doit quitter la TUI"
+    );
+}
+
+#[test]
 fn tui_auto_refresh_removes_stopped_listener() {
     let mut listener = spawn_listener("tui-stopped-project");
     let port = format!(":{}", listener.port);
